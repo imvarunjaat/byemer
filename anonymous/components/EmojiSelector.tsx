@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, Pressable } from 'react-native';
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 
 const EMOJI_CATEGORIES = {
   'Faces': ['😀', '😂', '🥹', '😊', '😎', '🥸', '🤩', '🥳', '😈', '👻', '👽', '🤖', '💩'],
@@ -76,16 +78,16 @@ const styles = StyleSheet.create({
   },
   categoryTabs: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: hp('1.5%'),
   },
   categoryTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 16,
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('1%'),
+    marginRight: wp('2%'),
+    borderRadius: wp('4%'),
   },
   categoryText: {
-    fontSize: 14,
+    fontSize: RFValue(14),
     fontWeight: '500',
   },
   emojiGrid: {
@@ -94,16 +96,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   emojiButton: {
-    width: '16%',
+    width: wp('16%'),
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
-    borderRadius: 12,
+    marginBottom: hp('1%'),
+    borderRadius: wp('4%'),
     borderWidth: 1,
     borderColor: 'transparent',
   },
   emoji: {
-    fontSize: 24,
+    fontSize: RFValue(28),
   },
 });

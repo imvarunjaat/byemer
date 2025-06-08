@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Dimensions, Pressable } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Pressable } from 'react-native';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
@@ -9,7 +11,7 @@ import { Button } from '../../components/Button';
 import { EmojiSelector } from '@/components/EmojiSelector';
 import { useRouter } from 'expo-router';
 
-const { width } = Dimensions.get('window');
+
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useThemeStore();
@@ -121,7 +123,7 @@ export default function ProfileScreen() {
               onPress={() => {}}
               variant="outline"
               icon={<Ionicons name="log-out" size={20} color={theme.accent} />}
-              style={{ ...styles.logoutButton, marginTop: width * 0.04, marginBottom: width * 0.02 }}
+              style={{ ...styles.logoutButton, marginTop: hp('2%'), marginBottom: hp('1%') }}
             />
           </GlassmorphicCard>
         </GlassmorphicCard>
@@ -136,87 +138,87 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(240,240,255,0.7)',
   },
   content: {
-    paddingHorizontal: width * 0.05,
-    paddingTop: width * 0.05,
-    paddingBottom: width * 0.12,
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('3%'),
+    paddingBottom: hp('12%'),
     alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: width * 0.04,
-    marginTop: width * 0.02,
+    marginBottom: hp('2%'),
+    marginTop: hp('1%'),
   },
   title: {
-    fontSize: Math.max(22, Math.min(32, width * 0.08)),
+    fontSize: RFValue(28),
     fontWeight: 'bold',
   },
   profileCard: {
-    marginBottom: width * 0.05,
+    marginBottom: hp('3%'),
     width: '100%',
-    maxWidth: 420,
+    maxWidth: wp('95%'),
     alignSelf: 'center',
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: hp('3%'),
   },
   avatarContainer: {
-    width: Math.max(56, Math.min(88, width * 0.22)),
-    height: Math.max(56, Math.min(88, width * 0.22)),
-    borderRadius: Math.max(28, Math.min(44, width * 0.11)),
+    width: wp('22%'),
+    height: wp('22%'),
+    borderRadius: wp('11%'),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: width * 0.04,
+    marginBottom: hp('2%'),
   },
   avatarEmoji: {
-    fontSize: Math.max(28, Math.min(44, width * 0.11)),
+    fontSize: RFValue(44),
   },
   profileName: {
-    fontSize: Math.max(16, Math.min(24, width * 0.06)),
+    fontSize: RFValue(20),
     fontWeight: 'bold',
-    marginBottom: width * 0.01,
+    marginBottom: hp('0.5%'),
   },
   profileSubtitle: {
-    fontSize: Math.max(11, Math.min(14, width * 0.035)),
+    fontSize: RFValue(13),
     textAlign: 'center',
     opacity: 0.7,
   },
   nicknameSection: {
-    marginBottom: width * 0.06,
+    marginBottom: hp('3%'),
   },
   emojiSection: {
-    marginBottom: width * 0.04,
+    marginBottom: hp('2%'),
   },
   sectionTitle: {
-    fontSize: Math.max(14, Math.min(18, width * 0.045)),
+    fontSize: RFValue(16),
     fontWeight: '600',
-    marginBottom: width * 0.025,
+    marginBottom: hp('1%'),
   },
   emojiSelectorContainer: {
-    marginTop: width * 0.04,
+    marginTop: hp('2%'),
   },
   settingsCard: {
-    marginTop: width * 0.04,
-    marginBottom: width * 0.05,
+    marginTop: hp('2%'),
+    marginBottom: hp('3%'),
     width: '100%',
-    maxWidth: 480,
+    maxWidth: wp('98%'),
     alignSelf: 'center',
     backgroundColor: 'rgba(124,77,255,0.04)',
-    borderRadius: Math.max(16, Math.min(24, width * 0.06)),
-    paddingHorizontal: width < 350 ? 10 : 18,
-    paddingVertical: width < 350 ? 10 : 16,
+    borderRadius: wp('6%'),
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('2%'),
   },
   cardTitle: {
-    fontSize: Math.max(15, Math.min(20, width * 0.05)),
+    fontSize: RFValue(18),
     fontWeight: '600',
-    marginBottom: width * 0.03,
+    marginBottom: hp('1.2%'),
   },
   settingItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Math.max(8, Math.min(14, width * 0.03)),
+    paddingVertical: hp('1.2%'),
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(150, 150, 150, 0.2)',
   },
@@ -225,10 +227,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   settingText: {
-    fontSize: Math.max(13, Math.min(16, width * 0.04)),
-    marginLeft: width * 0.025,
+    fontSize: RFValue(15),
+    marginLeft: wp('2%'),
   },
   logoutButton: {
-    marginTop: width * 0.025,
+    marginTop: hp('1%'),
   },
 });

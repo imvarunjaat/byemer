@@ -3,6 +3,8 @@ import { StyleSheet, View, ViewStyle, Pressable, ColorValue } from 'react-native
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 
 type GlassmorphicCardProps = {
   children: ReactNode;
@@ -47,11 +49,11 @@ export const GlassmorphicCard = ({
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 20,
+    borderRadius: wp('5%'),
     overflow: 'hidden',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: hp('0.5%') },
     shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowRadius: wp('3%'),
     elevation: 5,
   },
   gradient: {
@@ -62,7 +64,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minHeight: 0,
     width: '100%',
-    padding: 16,
-    borderRadius: 20,
+    padding: wp('4%'),
+    borderRadius: wp('5%'),
   },
 });

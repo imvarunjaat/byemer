@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 
 interface InputFieldProps extends TextInputProps {
   label?: string;
@@ -73,25 +75,25 @@ export const InputField = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: hp('2%'),
     width: '100%',
   },
   label: {
-    fontSize: 16,
+    fontSize: RFValue(16),
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: hp('1%'),
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderRadius: 16,
-    height: 56,
-    paddingHorizontal: 16,
+    borderRadius: wp('4%'),
+    height: hp('7%'),
+    paddingHorizontal: wp('4%'),
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: RFValue(16),
     height: '100%',
   },
   iconContainer: {
@@ -99,7 +101,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   error: {
-    fontSize: 14,
-    marginTop: 4,
+    fontSize: RFValue(13),
+    marginTop: hp('0.5%'),
   },
 });

@@ -5,6 +5,7 @@ export const colors = {
     text: '#1A1A1A',
     secondaryText: '#6C757D',
     accent: '#7C4DFF',
+    accentDark: '#651FFF', // Darker shade of accent for pressed state
     secondaryAccent: '#B388FF',
     border: '#E9ECEF',
     shadow: 'rgba(0, 0, 0, 0.05)',
@@ -19,6 +20,7 @@ export const colors = {
     text: '#FFFFFF',
     secondaryText: '#B0B0B0',
     accent: '#BB86FC',
+    accentDark: '#9A67EA', // Darker shade of accent for pressed state
     secondaryAccent: '#03DAC6',
     border: '#333333',
     shadow: 'rgba(0, 0, 0, 0.2)',

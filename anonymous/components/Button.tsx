@@ -11,6 +11,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 
 type ButtonProps = {
   title: string;
@@ -80,22 +82,22 @@ export const Button = ({
   const getSizeStyles = (): ViewStyle => {
     switch (size) {
       case 'small':
-        return { height: 36, paddingHorizontal: 12 };
+        return { height: hp('5%'), paddingHorizontal: wp('4%') };
       case 'large':
-        return { height: 56, paddingHorizontal: 24 };
+        return { height: hp('7%'), paddingHorizontal: wp('8%') };
       default:
-        return { height: 48, paddingHorizontal: 20 };
+        return { height: hp('6%'), paddingHorizontal: wp('6%') };
     }
   };
   
   const getTextSize = (): TextStyle => {
     switch (size) {
       case 'small':
-        return { fontSize: 14 };
+        return { fontSize: RFValue(14) };
       case 'large':
-        return { fontSize: 18 };
+        return { fontSize: RFValue(18) };
       default:
-        return { fontSize: 16 };
+        return { fontSize: RFValue(16) };
     }
   };
   
@@ -147,12 +149,23 @@ export const Button = ({
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 16,
+    borderRadius: wp('4%'),
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  gradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   text: {
     fontWeight: '600',
+    letterSpacing: 0.2,
+    fontSize: RFValue(16),
+  },
+  icon: {
+    marginRight: wp('2%'),
   },
 });

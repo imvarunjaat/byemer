@@ -12,6 +12,8 @@ import Animated, {
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
 import { Platform } from 'react-native';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 
 export const ThemeToggle = () => {
   const { isDarkMode, toggleTheme } = useThemeStore();
@@ -74,15 +76,15 @@ export const ThemeToggle = () => {
 
 const styles = StyleSheet.create({
   container: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: wp('11%'),
+    height: wp('11%'),
+    borderRadius: wp('5.5%'),
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: hp('0.3%') },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: wp('2%'),
     elevation: 2,
   },
 });

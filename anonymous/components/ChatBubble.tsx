@@ -2,6 +2,8 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 
 type ChatBubbleProps = {
   message: string;
@@ -43,8 +45,8 @@ export const ChatBubble = ({ message, timestamp, isCurrentUser }: ChatBubbleProp
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 4,
-    maxWidth: '80%',
+    marginVertical: hp('0.5%'),
+    maxWidth: wp('80%'),
   },
   currentUser: {
     alignSelf: 'flex-end',
@@ -53,28 +55,28 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   bubble: {
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    borderRadius: wp('5%'),
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('1.2%'),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: hp('0.2%') },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: wp('1%'),
     elevation: 2,
   },
   currentUserBubble: {
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: wp('1%'),
   },
   otherUserBubble: {
-    borderBottomLeftRadius: 4,
+    borderBottomLeftRadius: wp('1%'),
   },
   message: {
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: RFValue(16),
+    lineHeight: RFValue(22),
   },
   timestamp: {
-    fontSize: 11,
-    marginTop: 4,
+    fontSize: RFValue(11),
+    marginTop: hp('0.5%'),
     alignSelf: 'flex-end',
   },
 });

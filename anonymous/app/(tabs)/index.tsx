@@ -1,5 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView, SafeAreaView, ColorValue } from 'react-native';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
@@ -128,38 +130,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 40,
-    paddingBottom: 10,
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('6%'),
+    paddingBottom: hp('1.5%'),
   },
   title: {
-    fontSize: 28,
+    fontSize: RFValue(28),
     fontWeight: 'bold',
   },
   content: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: wp('5%'),
+    paddingBottom: hp('5%'),
   },
   heroSection: {
-    marginBottom: 30,
+    marginBottom: hp('4%'),
   },
   heroTitle: {
-    fontSize: 32,
+    fontSize: RFValue(32),
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: hp('1%'),
   },
   heroSubtitle: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: RFValue(16),
+    lineHeight: RFValue(24),
   },
   actionsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 30,
+    marginBottom: hp('4%'),
   },
   actionCard: {
     width: '48%',
-    height: 180,
+    height: hp('22%'),
   },
   actionContent: {
     flex: 1,
@@ -167,39 +169,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: wp('14%'),
+    height: wp('14%'),
+    borderRadius: wp('7%'),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: hp('1.5%'),
   },
   actionTitle: {
-    fontSize: 18,
+    fontSize: RFValue(18),
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: hp('0.7%'),
     textAlign: 'center',
   },
   actionDescription: {
-    fontSize: 14,
+    fontSize: RFValue(14),
     textAlign: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: wp('1%'),
   },
   recentSection: {
-    marginBottom: 20,
+    marginBottom: hp('2.5%'),
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: RFValue(20),
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: hp('2%'),
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: hp('5%'),
   },
   emptyStateText: {
-    fontSize: 16,
-    marginTop: 12,
+    fontSize: RFValue(16),
+    marginTop: hp('1.5%'),
   },
 });
