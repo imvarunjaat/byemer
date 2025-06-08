@@ -18,17 +18,19 @@ import {
   StyleSheet,
   ViewStyle,
   TextStyle,
-  ImageStyle
+  ImageStyle,
+  GestureResponderEvent // Added GestureResponderEvent
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStore } from '@/store/theme-store';
 import { colors as themeColors } from '@/constants/colors';
-import { Feather, Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { scaleSize, verticalScale, scaleFont } from '../../utils/responsive';
 
-type Style = ViewStyle | TextStyle | ImageStyle;
+type Style = ViewStyle | TextStyle | ImageStyle | Animated.AnimatedProps<ViewStyle>; // Specified ViewStyle for AnimatedProps
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable) as any;
+// const AnimatedPressable = Animated.createAnimatedComponent(Pressable) as any; // Commented out as OptionItem now uses Pressable + Animated.View
 
 // Generate a 6-digit room code if not provided
 const generateRoomCode = () => {
@@ -202,41 +204,45 @@ export default function CreatedRoomScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: appTheme.background }} edges={['left', 'right', 'bottom']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={appTheme.background} />
-      
       {/* Header */}
-      <View style={{
-        paddingTop: insets.top,
-        backgroundColor: appTheme.card,
-        borderBottomWidth: 1,
-        borderBottomColor: appTheme.border,
-      }}>
-        <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: width * 0.04,
-          paddingVertical: 10,
-        }}>
-          <Pressable 
-            onPress={() => router.back()} 
+      <View
+        style={{
+          paddingTop: insets.top,
+          backgroundColor: appTheme.card,
+          borderBottomWidth: 1,
+          borderBottomColor: appTheme.border,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: scaleSize(16),
+            paddingVertical: verticalScale(10),
+          }}
+        >
+          <Pressable
+            onPress={() => router.back()}
             style={({ pressed }) => ({
-              padding: 8,
-              borderRadius: 20,
+              padding: scaleSize(8),
+              borderRadius: scaleSize(20),
               backgroundColor: pressed ? appTheme.border : 'transparent',
             })}
           >
-            <Ionicons name="arrow-back" size={24} color={appTheme.accent} />
+            <Ionicons name="arrow-back" size={scaleFont(24)} color={appTheme.accent} />
           </Pressable>
-          
-          <View style={{
-            flex: 1,
-            alignItems: 'center',
-            marginLeft: 10,
-          }}>
+          <View
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              marginLeft: scaleSize(10),
+            }}
+          >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 22, marginRight: 8 }}>{emoji}</Text>
-              <Text 
+              <Text style={{ fontSize: scaleFont(22), marginRight: scaleSize(8) }}>{emoji}</Text>
+              <Text
                 style={{
-                  fontSize: 18,
+                  fontSize: scaleFont(18),
                   fontWeight: '600',
                   color: appTheme.text,
                   maxWidth: width * 0.5,
@@ -247,137 +253,124 @@ export default function CreatedRoomScreen() {
                 {roomName}
               </Text>
             </View>
-            <Text style={{ 
-              fontSize: 12, 
-              color: appTheme.secondaryText, 
-              marginTop: 2 
-            }}>
+            <Text
+              style={{
+                fontSize: scaleFont(14),
+                color: appTheme.secondaryText,
+                marginTop: scaleSize(2),
+              }}
+            >
               Room Code: {roomCode}
             </Text>
           </View>
-          
-          <Pressable 
+          <Pressable
             onPress={() => setShowOptions(true)}
             style={({ pressed }) => ({
-              padding: 8,
-              borderRadius: 20,
+              padding: scaleSize(8),
+              borderRadius: scaleSize(20),
               backgroundColor: pressed ? appTheme.border : 'transparent',
             })}
           >
-            <Feather name="more-vertical" size={24} color={appTheme.text} />
+            <Feather name="more-vertical" size={scaleFont(24)} color={appTheme.text} />
           </Pressable>
         </View>
       </View>
-      
-      {/* Chat Messages */}
-      <KeyboardAvoidingView 
-        style={styles.container}
+      {/* Main Chat Area */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? verticalScale(60) : 0}
+        enabled
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.content}>
-            <ScrollView 
+          <View style={{ flex: 1 }}>
+            <ScrollView
               ref={scrollViewRef}
               style={{ flex: 1 }}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-              }}
+              contentContainerStyle={
+                messages.length === 0
+                  ? {
+                      flexGrow: 1,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      paddingHorizontal: scaleSize(16),
+                      paddingVertical: verticalScale(12),
+                    }
+                  : {
+                      flexGrow: 1,
+                      paddingHorizontal: scaleSize(16),
+                      paddingVertical: verticalScale(12),
+                    }
+              }
               keyboardDismissMode="interactive"
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
               {messages.length === 0 ? (
-                <View style={[styles.emptyState, { marginTop: height * 0.3 }]}>
-                  <MaterialCommunityIcons 
-                    name="message-outline" 
-                    size={60} 
+                <View style={styles.emptyState}>
+                  <MaterialCommunityIcons
+                    name="message-text-outline"
+                    size={scaleFont(64)}
                     color={appTheme.secondaryText}
-                    style={styles.emptyIcon}
+                    style={{ marginBottom: verticalScale(16) }}
                   />
                   <Text style={[styles.emptyText, { color: appTheme.secondaryText }]}>
                     Send your first message to start the conversation
                   </Text>
                 </View>
               ) : (
-                messages.map((msg) => {
-                  const animation = getMessageAnimation(msg.id);
-                  return (
-                    <Animated.View 
-                      key={msg.id}
+                messages.map((msg) => (
+                  <Animated.View
+                    key={msg.id}
+                    style={[
+                      styles.messageContainer,
+                      msg.isCurrentUser ? styles.myMessage : styles.otherMessage,
+                    ]}
+                  >
+                    <Text
                       style={[
-                        styles.messageBubbleWrapper,
-                        {
-                          alignSelf: msg.isCurrentUser ? 'flex-end' : 'flex-start',
-                          opacity: animation,
-                          transform: [
-                            { 
-                              scale: animation.interpolate({
-                                inputRange: [0.5, 1],
-                                outputRange: [0.8, 1]
-                              }) 
-                            },
-                            {
-                              translateY: animation.interpolate({
-                                inputRange: [0.5, 1],
-                                outputRange: [20, 0]
-                              })
-                            }
-                          ]
-                        }
+                        styles.messageText,
+                        { color: msg.isCurrentUser ? '#fff' : appTheme.text },
                       ]}
                     >
-                      <View style={[
-                        styles.messageBubble,
-                        {
-                          backgroundColor: msg.isCurrentUser ? appTheme.accent : appTheme.card,
-                          borderBottomRightRadius: msg.isCurrentUser ? 4 : 18,
-                          borderBottomLeftRadius: msg.isCurrentUser ? 18 : 4,
-                        }
-                      ]}>
-                        <Text style={[
-                          styles.messageText,
-                          { color: msg.isCurrentUser ? '#fff' : appTheme.text }
-                        ]}>
-                          {msg.text}
-                        </Text>
-                        <Text style={[
-                          styles.messageTime,
-                          { color: msg.isCurrentUser ? 'rgba(255,255,255,0.7)' : appTheme.secondaryText }
-                        ]}>
-                          {formatTime(msg.timestamp)}
-                        </Text>
-                      </View>
-                    </Animated.View>
-                  );
-                })
+                      {msg.text}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.messageTime,
+                        { color: msg.isCurrentUser ? 'rgba(255,255,255,0.7)' : appTheme.secondaryText },
+                      ]}
+                    >
+                      {formatTime(msg.timestamp)}
+                    </Text>
+                  </Animated.View>
+                ))
               )}
-              <View style={{ height: 20 }} />
             </ScrollView>
-            
             {/* Message Input */}
-            <View style={[
-              styles.inputContainer, 
-              {
-                backgroundColor: appTheme.card,
-                borderTopColor: appTheme.border,
-                paddingBottom: Math.max(insets.bottom, 10),
-              }
-            ]}>
-              <View style={[
-                styles.inputWrapper,
+            <View
+              style={[
+                styles.inputContainer,
                 {
-                  backgroundColor: appTheme.background,
-                  borderColor: message ? appTheme.accent : appTheme.border,
-                }
-              ]}>
+                  backgroundColor: appTheme.card,
+                  borderTopColor: appTheme.border,
+                  paddingBottom: Math.max(insets.bottom, verticalScale(10)),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.inputWrapper,
+                  {
+                    backgroundColor: appTheme.background,
+                    borderColor: message ? appTheme.accent : appTheme.border,
+                  },
+                ]}
+              >
                 <TextInput
                   style={[
                     styles.textInput,
-                    { 
-                      color: appTheme.text,
-                      paddingRight: message ? 36 : 0,
-                    }
+                    { color: appTheme.text, paddingRight: message ? scaleSize(36) : 0 },
                   ]}
                   value={message}
                   onChangeText={setMessage}
@@ -392,40 +385,31 @@ export default function CreatedRoomScreen() {
                   selectionColor={appTheme.accent}
                 />
                 {message.length > 0 && (
-                  <AnimatedPressable 
+                  <Pressable
                     onPress={() => setMessage('')}
-                    style={styles.clearButton}
+                    style={({ pressed }) => [
+                      styles.clearButton,
+                      { backgroundColor: pressed ? appTheme.border : 'transparent' },
+                    ]}
                   >
-                    <Ionicons 
-                      name="close-circle" 
-                      size={20} 
-                      color={appTheme.secondaryText}
-                    />
-                  </AnimatedPressable>
+                    <Feather name="x" size={scaleFont(18)} color={appTheme.secondaryText} />
+                  </Pressable>
                 )}
+                <Pressable
+                  onPress={handleSend}
+                  style={({ pressed }) => [
+                    styles.sendButton,
+                    { backgroundColor: pressed ? appTheme.accent : appTheme.background },
+                  ]}
+                >
+                  <Feather name="send" size={scaleFont(20)} color={appTheme.accent} />
+                </Pressable>
               </View>
-              
-              <AnimatedPressable
-                onPress={handleSend}
-                disabled={!message.trim()}
-                style={({ pressed }: { pressed: boolean }) => ({
-                  ...styles.sendButton,
-                  backgroundColor: message.trim() ? appTheme.accent : appTheme.border,
-                  opacity: pressed ? 0.8 : 1,
-                })}
-              >
-                <Ionicons 
-                  name={message.trim() ? 'send' : 'mic-outline'}
-                  size={22} 
-                  color={message.trim() ? '#fff' : appTheme.secondaryText} 
-                  style={styles.sendIcon} 
-                />
-              </AnimatedPressable>
             </View>
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
-      
+
       {/* Options Modal */}
       <Modal
         visible={showOptions}
@@ -433,7 +417,7 @@ export default function CreatedRoomScreen() {
         transparent
         onRequestClose={() => setShowOptions(false)}
       >
-        <Pressable 
+        <Pressable
           style={{
             flex: 1,
             backgroundColor: 'rgba(0,0,0,0.5)',
@@ -443,44 +427,40 @@ export default function CreatedRoomScreen() {
         >
           <View style={{
             backgroundColor: appTheme.card,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            paddingBottom: insets.bottom + 20,
-            paddingTop: 20,
+            borderTopLeftRadius: scaleSize(20),
+            borderTopRightRadius: scaleSize(20),
+            paddingBottom: insets.bottom + verticalScale(20),
+            paddingTop: verticalScale(20),
           }}>
             <View style={{
-              width: 40,
-              height: 4,
+              width: scaleSize(40),
+              height: verticalScale(4),
               backgroundColor: appTheme.border,
-              borderRadius: 2,
+              borderRadius: scaleSize(2),
               alignSelf: 'center',
-              marginBottom: 20,
+              marginBottom: verticalScale(20),
             }} />
-            
-            <OptionItem 
-              icon="person-add" 
-              label="Add Member" 
+            <OptionItem
+              icon="person-add-outline"
+              label="Add Member"
               onPress={() => handleRoomAction('add')}
               color={appTheme.text}
             />
-            
-            <OptionItem 
-              icon="person-remove" 
-              label="Kick Member" 
+            <OptionItem
+              icon="person-remove-outline"
+              label="Kick Member"
               onPress={() => handleRoomAction('kick')}
               color={appTheme.text}
             />
-            
             <View style={{
-              height: 1,
+              height: verticalScale(20),
               backgroundColor: appTheme.border,
-              marginVertical: 12,
-              marginHorizontal: 16,
+              marginVertical: verticalScale(12),
+              marginHorizontal: scaleSize(16),
             }} />
-            
-            <OptionItem 
-              icon="trash-outline" 
-              label="Delete Group" 
+            <OptionItem
+              icon="trash-outline"
+              label="Delete Group"
               onPress={() => handleRoomAction('delete')}
               color={appTheme.error}
             />
@@ -493,53 +473,50 @@ export default function CreatedRoomScreen() {
 
 // Reusable option item component type
 type OptionItemProps = {
-  icon: string;
+  icon?: React.ComponentProps<typeof Ionicons>['name']; // Made icon optional
   label: string;
   onPress: () => void;
   color: string;
 };
 
 // Reusable option item component
-const OptionItem: React.FC<OptionItemProps> = ({ 
-  icon, 
-  label, 
-  onPress, 
-  color 
-}) => {
-  const scale = useRef(new Animated.Value(1)).current;
+const OptionItem: React.FC<OptionItemProps> = (props) => {
+  const { label, onPress, color } = props;
+  const iconName = props.icon || "help-circle-outline"; // Explicitly handle default for icon
+  const opacity = useRef(new Animated.Value(1)).current; // Changed from scale to opacity
   
-  const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.95,
-      useNativeDriver: true,
+  const handlePressIn = (event: GestureResponderEvent) => {
+    Animated.spring(opacity, { // Changed from scale to opacity
+      toValue: 0.7, // Target opacity on press
+      useNativeDriver: false,
     }).start();
   };
 
-  const handlePressOut = () => {
-    Animated.spring(scale, {
+  const handlePressOut = (event: GestureResponderEvent) => {
+    Animated.spring(opacity, { // Changed from scale to opacity
       toValue: 1,
-      useNativeDriver: true,
       friction: 3,
       tension: 40,
+      useNativeDriver: false,
     }).start();
   };
 
   return (
-    <AnimatedPressable 
+    <Pressable
       onPress={onPress}
-      onPressIn={handlePressIn as any}
-      onPressOut={handlePressOut as any}
-      style={({ pressed }: { pressed: boolean }) => ({
-        ...styles.optionItem,
-        opacity: pressed ? 0.7 : 1,
-        transform: [{ scale }],
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={({ pressed }) => ({
+        // Opacity is now handled by Animated.View, keep basic Pressable style if needed
       })}
     >
-      <Ionicons name={icon as any} size={22} color={color} style={styles.optionIcon} />
-      <Text style={[styles.optionText, { color }]}>
-        {label}
-      </Text>
-    </AnimatedPressable>
+      <Animated.View style={[styles.optionItem, { opacity: opacity }]}>
+        <Ionicons name={iconName} size={scaleFont(22)} color={color} style={styles.optionIcon} />
+        <Text style={[styles.optionText, { color }]}>
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
   );
 };
 
@@ -561,23 +538,23 @@ const styles = StyleSheet.create({
   },
   emptyIcon: {
     opacity: 0.5, 
-    marginBottom: 10
+    marginBottom: verticalScale(10)
   },
   emptyText: {
     textAlign: 'center',
     maxWidth: '80%',
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: scaleFont(16),
+    lineHeight: scaleFont(22),
   },
   // Messages
   messageBubbleWrapper: {
     maxWidth: '80%',
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
   },
   messageBubble: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 18,
+    paddingHorizontal: scaleSize(16),
+    paddingVertical: verticalScale(8),
+    borderRadius: scaleSize(18),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -585,11 +562,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   messageText: {
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: scaleFont(16),
+    lineHeight: scaleFont(20),
   },
   messageTime: {
-    fontSize: 10,
+    fontSize: scaleFont(10),
     textAlign: 'right',
     marginTop: 4,
   },
@@ -597,59 +574,89 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
-    paddingBottom: 16,
+    padding: scaleSize(12),
+    paddingBottom: verticalScale(16),
     borderTopWidth: 1,
+    position: 'relative',
+    zIndex: 10,
   },
   inputWrapper: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 8,
+    borderRadius: scaleSize(22),
+    paddingHorizontal: scaleSize(14),
+    paddingVertical: verticalScale(8),
+    marginRight: scaleSize(8),
     borderWidth: 1,
-    minHeight: 44,
-    maxHeight: 100,
+    minHeight: verticalScale(44),
+    maxHeight: verticalScale(100),
   },
   textInput: {
     flex: 1,
-    fontSize: 16,
-    maxHeight: 100,
-    minHeight: 28,
+    fontSize: scaleFont(16),
+    maxHeight: verticalScale(100),
+    minHeight: verticalScale(28),
     padding: 0,
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
   clearButton: {
     position: 'absolute',
-    right: 8,
-    padding: 4,
+    right: scaleSize(8),
+    padding: scaleSize(4),
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: scaleSize(48),
+    height: scaleSize(48),
+    borderRadius: scaleSize(24),
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendIcon: {
-    marginLeft: 2,
+    marginLeft: scaleSize(2),
   },
   
   // Options
   optionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingVertical: verticalScale(16),
+    paddingHorizontal: scaleSize(24),
   },
   optionIcon: {
-    width: 28,
+    width: scaleSize(28),
   },
   optionText: {
-    fontSize: 16,
-    marginLeft: 12,
+    fontSize: scaleFont(16),
+    marginLeft: scaleSize(12),
+  },
+
+  // Added for chat message bubbles
+  messageContainer: {
+    maxWidth: '80%',
+    borderRadius: scaleSize(16),
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scaleSize(14),
+    marginVertical: verticalScale(4),
+    marginHorizontal: scaleSize(8),
+    alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  myMessage: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#4f8cff', // fallback, will be overridden inline
+    borderBottomRightRadius: scaleSize(4),
+    borderBottomLeftRadius: scaleSize(16),
+  },
+  otherMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e5e5ea', // fallback, will be overridden inline
+    borderBottomLeftRadius: scaleSize(4),
+    borderBottomRightRadius: scaleSize(16),
   },
 });
