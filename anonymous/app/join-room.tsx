@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Text, View, SafeAreaView, KeyboardAvoidingView, Platform, Pressable, StyleSheet, useWindowDimensions, ScrollView } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { Text, View, SafeAreaView, KeyboardAvoidingView, Platform, Pressable, StyleSheet, useWindowDimensions, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useThemeStore } from '@/store/theme-store';
@@ -158,82 +158,99 @@ export default function JoinRoomScreen() {
   const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
+  const inputRef = useRef(null);
 
-  const handleJoinRoom = () => {
-    if (!roomCode.trim()) {
+  // Only allow numeric input and auto-submit if 6 digits
+  const handleInputChange = (text: string) => {
+    // Remove non-digits
+    const sanitized = text.replace(/\D/g, '');
+    setRoomCode(sanitized);
+    if (error) setError('');
+    if (sanitized.length === 6) {
+      Keyboard.dismiss();
+      handleJoinRoom(sanitized);
+    }
+  };
+
+  const handleJoinRoom = (codeOverride?: string) => {
+    const code = typeof codeOverride === 'string' ? codeOverride : roomCode;
+    if (!code.trim()) {
       setError('Please enter a room code');
       return;
     }
-    
     setError('');
     setIsJoining(true);
-    
-    // Simulate API call
     setTimeout(() => {
       setIsJoining(false);
-      
-      // For demo purposes, let's say any 6-digit code works
-      if (roomCode.length === 6 && /^\d+$/.test(roomCode)) {
-        router.push(`/room/${roomCode}`);
+      if (code.length === 6 && /^\d+$/.test(code)) {
+        router.push(`/room/${code}`);
       } else {
         setError('Invalid room code. Please try again.');
       }
-    }, 1500);
+    }, 1000);
   };
-  
+
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoid}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
-      >
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8} accessibilityLabel="Go back">
-                <Feather name="arrow-left" size={28} color={isDarkMode ? '#fff' : '#7c4dff'} />
-              </Pressable>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.title}>Join Room</Text>
-                <Text style={styles.subtitle}>Join an anonymous conversation instantly</Text>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={{ paddingBottom: 0 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.content}>
+              <View style={styles.header}>
+                <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8} accessibilityLabel="Go back">
+                  <Feather name="arrow-left" size={28} color={isDarkMode ? '#fff' : '#7c4dff'} />
+                </Pressable>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>Join Room</Text>
+                  <Text style={styles.subtitle}>Join an anonymous conversation instantly</Text>
+                </View>
+              </View>
+              <View style={styles.emojiFloatContainer}>
+                <MaterialCommunityIcons name="link" size={Math.max(width * 0.08, 34)} color={isDarkMode ? colors.dark.secondaryAccent : colors.light.accent} />
+              </View>
+              <View style={styles.formCard}>
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                  keyboardVerticalOffset={0}
+                  style={{ width: '100%' }}
+                >
+                  <View style={styles.formSection}>
+                    <Text style={styles.sectionTitle}>Room Code</Text>
+                    <InputField
+                      ref={inputRef}
+                      value={roomCode}
+                      onChangeText={handleInputChange}
+                      placeholder="Enter 6-digit code"
+                      keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
+                      maxLength={6}
+                      error={error}
+                      autoFocus
+                      returnKeyType="done"
+                      onSubmitEditing={() => handleJoinRoom()}
+                      containerStyle={styles.inputSection}
+                    />
+                  </View>
+                  <View style={styles.infoSection}>
+                    <Text style={styles.infoText}>Ask your friend for the 6-digit room code to join their anonymous chat room.</Text>
+                  </View>
+                  <Button
+                    title="Join Anonymously"
+                    onPress={() => handleJoinRoom()}
+                    loading={isJoining}
+                    disabled={roomCode.length !== 6}
+                    style={styles.joinButton}
+                  />
+                  <Text style={styles.privacyNote}>Your identity will remain anonymous in the chat room.</Text>
+                </KeyboardAvoidingView>
               </View>
             </View>
-            <View style={styles.emojiFloatContainer}>
-              <MaterialCommunityIcons name="link" size={Math.max(width * 0.08, 34)} color={isDarkMode ? colors.dark.secondaryAccent : colors.light.accent} />
-            </View>
-            <View style={styles.formCard}>
-              <View style={styles.formSection}>
-                <Text style={styles.sectionTitle}>Room Code</Text>
-                <InputField
-                  value={roomCode}
-                  onChangeText={(text) => {
-                    setRoomCode(text);
-                    if (error) setError('');
-                  }}
-                  placeholder="Enter 6-digit code"
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  error={error}
-                  autoFocus
-                  containerStyle={styles.inputSection}
-                />
-              </View>
-              <View style={styles.infoSection}>
-                <Text style={styles.infoText}>Ask your friend for the 6-digit room code to join their anonymous chat room.</Text>
-              </View>
-              <Button
-                title="Join Anonymously"
-                onPress={handleJoinRoom}
-                loading={isJoining}
-                disabled={!roomCode.trim()}
-                style={styles.joinButton}
-              />
-              <Text style={styles.privacyNote}>Your identity will remain anonymous in the chat room.</Text>
-            </View>
+          </ScrollView>
         </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 }

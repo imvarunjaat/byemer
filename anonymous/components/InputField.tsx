@@ -20,14 +20,15 @@ interface InputFieldProps extends TextInputProps {
   rightIcon?: React.ReactNode;
 }
 
-export const InputField = ({
-  label,
-  error,
-  containerStyle,
-  leftIcon,
-  rightIcon,
-  ...props
-}: InputFieldProps) => {
+export const InputField = React.forwardRef<TextInput, InputFieldProps>(
+  ({
+    label,
+    error,
+    containerStyle,
+    leftIcon,
+    rightIcon,
+    ...props
+  }, ref) => {
   const { isDarkMode } = useThemeStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   
@@ -49,6 +50,7 @@ export const InputField = ({
         {leftIcon && <View style={styles.iconContainer}>{leftIcon}</View>}
         
         <TextInput
+          ref={ref}
           style={[
             styles.input,
             { 
@@ -71,7 +73,7 @@ export const InputField = ({
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

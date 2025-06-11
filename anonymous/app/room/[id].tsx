@@ -50,6 +50,53 @@ type RoomMember = {
   isAdmin: boolean;
 };
 
+// OptionItem and OptionItemProps must be defined above the main component so they are always in scope
+
+type OptionItemProps = {
+  icon?: string;
+  label: string;
+  onPress: () => void;
+  color: string;
+};
+
+const OptionItem: React.FC<OptionItemProps> = React.memo((props) => {
+  const { label, onPress, color } = props;
+  const iconName = props.icon || "help-circle-outline";
+  const opacity = React.useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(opacity, {
+      toValue: 0.7,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(opacity, {
+      toValue: 1,
+      friction: 3,
+      tension: 40,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={({ pressed }) => ({})}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Animated.View style={[styles.optionItem, { opacity }]}> 
+        <Ionicons name={iconName as any} size={scaleFont(22)} color={color} style={styles.optionIcon} />
+        <Text style={[styles.optionText, { color }]}>{label}</Text>
+      </Animated.View>
+    </Pressable>
+  );
+});
+
 export default function CreatedRoomScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; name?: string; emoji?: string; code?: string }>();
@@ -95,10 +142,15 @@ export default function CreatedRoomScreen() {
   };
 
   // Handle room options
-  const handleRoomAction = (action: 'delete' | 'add' | 'kick') => {
+  const handleRoomAction = (action: 'delete' | 'add' | 'kick' | 'leave') => {
     setShowOptions(false);
     
     switch (action) {
+      case 'leave':
+        // In a real app, you would implement leave group logic here
+        Alert.alert('Leave Group', 'You have left the group.');
+        router.back();
+        break;
       case 'delete':
         Alert.alert(
           'Delete Group',
@@ -228,6 +280,8 @@ export default function CreatedRoomScreen() {
               borderRadius: scaleSize(20),
               backgroundColor: pressed ? appTheme.border : 'transparent',
             })}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="arrow-back" size={scaleFont(24)} color={appTheme.accent} />
           </Pressable>
@@ -270,6 +324,8 @@ export default function CreatedRoomScreen() {
               borderRadius: scaleSize(20),
               backgroundColor: pressed ? appTheme.border : 'transparent',
             })}
+            accessibilityRole="button"
+            accessibilityLabel="Show room options"
           >
             <Feather name="more-vertical" size={scaleFont(24)} color={appTheme.text} />
           </Pressable>
@@ -279,137 +335,94 @@ export default function CreatedRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? verticalScale(60) : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' 
+          ? insets.top + insets.bottom + 8
+          : insets.bottom
+        }
         enabled
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={{ flex: 1 }}>
-            <ScrollView
-              ref={scrollViewRef}
-              style={{ flex: 1 }}
-              contentContainerStyle={
-                messages.length === 0
-                  ? {
-                      flexGrow: 1,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      paddingHorizontal: scaleSize(16),
-                      paddingVertical: verticalScale(12),
-                    }
-                  : {
-                      flexGrow: 1,
-                      paddingHorizontal: scaleSize(16),
-                      paddingVertical: verticalScale(12),
-                    }
-              }
-              keyboardDismissMode="interactive"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {messages.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MaterialCommunityIcons
-                    name="message-text-outline"
-                    size={scaleFont(64)}
-                    color={appTheme.secondaryText}
-                    style={{ marginBottom: verticalScale(16) }}
-                  />
-                  <Text style={[styles.emptyText, { color: appTheme.secondaryText }]}>
-                    Send your first message to start the conversation
-                  </Text>
-                </View>
-              ) : (
-                messages.map((msg) => (
-                  <Animated.View
-                    key={msg.id}
-                    style={[
-                      styles.messageContainer,
-                      msg.isCurrentUser ? styles.myMessage : styles.otherMessage,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.messageText,
-                        { color: msg.isCurrentUser ? '#fff' : appTheme.text },
-                      ]}
-                    >
-                      {msg.text}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.messageTime,
-                        { color: msg.isCurrentUser ? 'rgba(255,255,255,0.7)' : appTheme.secondaryText },
-                      ]}
-                    >
-                      {formatTime(msg.timestamp)}
-                    </Text>
-                  </Animated.View>
-                ))
-              )}
-            </ScrollView>
-            {/* Message Input */}
-            <View
-              style={[
-                styles.inputContainer,
-                {
-                  backgroundColor: appTheme.card,
-                  borderTopColor: appTheme.border,
-                  paddingBottom: Math.max(insets.bottom, verticalScale(10)),
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.inputWrapper,
-                  {
-                    backgroundColor: appTheme.background,
-                    borderColor: message ? appTheme.accent : appTheme.border,
-                  },
-                ]}
+            <View style={{ flex: 1 }}>
+              <ScrollView
+                ref={scrollViewRef}
+                style={{ flex: 1 }}
+                contentContainerStyle={
+                  messages.length === 0
+                    ? {
+                        flexGrow: 1,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        paddingHorizontal: scaleSize(16),
+                        paddingVertical: verticalScale(12),
+                      }
+                    : {
+                        flexGrow: 1,
+                        paddingHorizontal: scaleSize(16),
+                        paddingVertical: verticalScale(12),
+                      }
+                }
+                keyboardShouldPersistTaps="handled"
               >
+                {messages.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialCommunityIcons name="message-text-outline" size={scaleFont(48)} color={appTheme.border} style={styles.emptyIcon} />
+                    <Text style={[styles.emptyText, { color: appTheme.secondaryText }]}>No messages yet. Start the conversation!</Text>
+                  </View>
+                ) : (
+                  messages.map((msg) => (
+                    <Animated.View
+                      key={msg.id}
+                      style={{
+                        opacity: getMessageAnimation(msg.id),
+                        transform: [{ scale: getMessageAnimation(msg.id) }],
+                      }}
+                    >
+                      <View
+                        style={[
+                          styles.messageContainer,
+                          msg.isCurrentUser ? [styles.myMessage, { backgroundColor: appTheme.accent }] : [styles.otherMessage, { backgroundColor: appTheme.card }],
+                        ]}
+                      >
+                        <Text style={[styles.messageText, { color: msg.isCurrentUser ? '#fff' : appTheme.text }]}>{msg.text}</Text>
+                        <Text style={[styles.messageTime, { color: msg.isCurrentUser ? '#e0e0e0' : appTheme.secondaryText }]}>{formatTime(msg.timestamp)}</Text>
+                      </View>
+                    </Animated.View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+            {/* Input Area */}
+            <View style={[styles.inputContainer, { backgroundColor: appTheme.background, borderTopColor: appTheme.border }]}> 
+              <View style={[styles.inputWrapper, { backgroundColor: appTheme.card, borderColor: appTheme.border }]}> 
                 <TextInput
-                  style={[
-                    styles.textInput,
-                    { color: appTheme.text, paddingRight: message ? scaleSize(36) : 0 },
-                  ]}
-                  value={message}
-                  onChangeText={setMessage}
+                  style={[styles.textInput, { color: appTheme.text }]}
                   placeholder="Type a message..."
                   placeholderTextColor={appTheme.secondaryText}
                   multiline
+                  value={message}
+                  onChangeText={setMessage}
                   returnKeyType="send"
                   onSubmitEditing={handleSend}
-                  blurOnSubmit={false}
-                  enablesReturnKeyAutomatically
-                  textAlignVertical="center"
-                  selectionColor={appTheme.accent}
                 />
                 {message.length > 0 && (
-                  <Pressable
-                    onPress={() => setMessage('')}
-                    style={({ pressed }) => [
-                      styles.clearButton,
-                      { backgroundColor: pressed ? appTheme.border : 'transparent' },
-                    ]}
-                  >
-                    <Feather name="x" size={scaleFont(18)} color={appTheme.secondaryText} />
+                  <Pressable onPress={() => setMessage('')} style={styles.clearButton} accessibilityRole="button" accessibilityLabel="Clear message">
+                    <Feather name="x-circle" size={scaleFont(20)} color={appTheme.secondaryText} />
                   </Pressable>
                 )}
-                <Pressable
-                  onPress={handleSend}
-                  style={({ pressed }) => [
-                    styles.sendButton,
-                    { backgroundColor: pressed ? appTheme.accent : appTheme.background },
-                  ]}
-                >
-                  <Feather name="send" size={scaleFont(20)} color={appTheme.accent} />
-                </Pressable>
               </View>
+              <Pressable
+                onPress={handleSend}
+                style={({ pressed }) => [styles.sendButton, { backgroundColor: pressed ? appTheme.accent + 'cc' : appTheme.accent }]}
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+              >
+                <Ionicons name="send" size={scaleFont(24)} color="#fff" style={styles.sendIcon} />
+              </Pressable>
             </View>
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
-
       {/* Options Modal */}
       <Modal
         visible={showOptions}
@@ -417,108 +430,39 @@ export default function CreatedRoomScreen() {
         transparent
         onRequestClose={() => setShowOptions(false)}
       >
-        <Pressable
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'flex-end',
-          }}
-          onPress={() => setShowOptions(false)}
-        >
-          <View style={{
-            backgroundColor: appTheme.card,
-            borderTopLeftRadius: scaleSize(20),
-            borderTopRightRadius: scaleSize(20),
-            paddingBottom: insets.bottom + verticalScale(20),
-            paddingTop: verticalScale(20),
-          }}>
-            <View style={{
-              width: scaleSize(40),
-              height: verticalScale(4),
-              backgroundColor: appTheme.border,
-              borderRadius: scaleSize(2),
-              alignSelf: 'center',
-              marginBottom: verticalScale(20),
-            }} />
-            <OptionItem
-              icon="person-add-outline"
-              label="Add Member"
-              onPress={() => handleRoomAction('add')}
-              color={appTheme.text}
-            />
-            <OptionItem
-              icon="person-remove-outline"
-              label="Kick Member"
-              onPress={() => handleRoomAction('kick')}
-              color={appTheme.text}
-            />
-            <View style={{
-              height: verticalScale(20),
-              backgroundColor: appTheme.border,
-              marginVertical: verticalScale(12),
-              marginHorizontal: scaleSize(16),
-            }} />
-            <OptionItem
-              icon="trash-outline"
-              label="Delete Group"
-              onPress={() => handleRoomAction('delete')}
-              color={appTheme.error}
-            />
-          </View>
-        </Pressable>
+        <TouchableWithoutFeedback onPress={() => setShowOptions(false)}>
+          <View style={{ flex: 1, backgroundColor: '#00000055' }} />
+        </TouchableWithoutFeedback>
+        <View style={{ backgroundColor: appTheme.card, borderTopLeftRadius: scaleSize(24), borderTopRightRadius: scaleSize(24), paddingBottom: insets.bottom || scaleSize(24) }}>
+          <OptionItem
+            icon="user-plus"
+            label="Add Member"
+            onPress={() => { setShowOptions(false); handleRoomAction('add'); }}
+            color={appTheme.accent}
+          />
+          <OptionItem
+            icon="user-x"
+            label="Kick Member"
+            onPress={() => { setShowOptions(false); handleRoomAction('kick'); }}
+            color={appTheme.warning}
+          />
+          <OptionItem
+            icon="trash"
+            label="Delete Group"
+            onPress={() => { setShowOptions(false); handleRoomAction('delete'); }}
+            color={appTheme.error}
+          />
+          <OptionItem
+            icon="log-out"
+            label="Leave Group"
+            onPress={() => { setShowOptions(false); handleRoomAction('leave'); }}
+            color={appTheme.error}
+          />
+        </View>
       </Modal>
     </SafeAreaView>
   );
 }
-
-// Reusable option item component type
-type OptionItemProps = {
-  icon?: React.ComponentProps<typeof Ionicons>['name']; // Made icon optional
-  label: string;
-  onPress: () => void;
-  color: string;
-};
-
-// Reusable option item component
-const OptionItem: React.FC<OptionItemProps> = (props) => {
-  const { label, onPress, color } = props;
-  const iconName = props.icon || "help-circle-outline"; // Explicitly handle default for icon
-  const opacity = useRef(new Animated.Value(1)).current; // Changed from scale to opacity
-  
-  const handlePressIn = (event: GestureResponderEvent) => {
-    Animated.spring(opacity, { // Changed from scale to opacity
-      toValue: 0.7, // Target opacity on press
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const handlePressOut = (event: GestureResponderEvent) => {
-    Animated.spring(opacity, { // Changed from scale to opacity
-      toValue: 1,
-      friction: 3,
-      tension: 40,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={({ pressed }) => ({
-        // Opacity is now handled by Animated.View, keep basic Pressable style if needed
-      })}
-    >
-      <Animated.View style={[styles.optionItem, { opacity: opacity }]}>
-        <Ionicons name={iconName} size={scaleFont(22)} color={color} style={styles.optionIcon} />
-        <Text style={[styles.optionText, { color }]}>
-          {label}
-        </Text>
-      </Animated.View>
-    </Pressable>
-  );
-};
 
 // Define styles with proper TypeScript types
 const styles = StyleSheet.create({
@@ -595,10 +539,9 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: scaleFont(16),
-    maxHeight: verticalScale(100),
     minHeight: verticalScale(28),
     padding: 0,
-    textAlignVertical: 'center',
+    textAlignVertical: 'top', 
     includeFontPadding: false,
   },
   clearButton: {
