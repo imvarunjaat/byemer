@@ -108,7 +108,7 @@ export default function CreatedRoomScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; name?: string; emoji?: string; code?: string; joined?: string }>();
   const { isDarkMode } = useThemeStore();
-  const { width, height: screenHeight } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const textInputRef = useRef<TextInput>(null);
@@ -219,8 +219,7 @@ export default function CreatedRoomScreen() {
   // Animation values
   const messageAnimations = useRef<{[key: string]: Animated.Value}>({});
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [inputPosition, setInputPosition] = useState(0);
-  const [initialKeyboardShown, setInitialKeyboardShown] = useState(false); // Track first keyboard appearance
+  const [inputPosition, setInputPosition] = useState(isJoinedRoom && Platform.OS === 'android' ? 500 : 0);
   const [isFirstMount, setIsFirstMount] = useState(true);
   
   // Function to handle scroll positioning
@@ -249,48 +248,23 @@ export default function CreatedRoomScreen() {
     if (isFirstMount) {
       setIsFirstMount(false);
       
-      if (isJoinedRoom) {
-        // For Android joined rooms, use a much longer delay sequence and different approach
-        if (Platform.OS === 'android') {
-          // Do not focus immediately - allow UI to settle first
-          setTimeout(() => {  
-            // First scroll to position messages
-            if (scrollViewRef.current && messages.length > 0) {
-              scrollViewRef.current.scrollToEnd({ animated: false });
-            }
-            
-            // Focus after a significant delay
-            setTimeout(() => {
-              if (textInputRef.current) {
-                textInputRef.current.focus();
-              }
-              
-              // After keyboard appears, do multiple scroll attempts with increasing delays
-              setTimeout(() => {
-                if (scrollViewRef.current && messages.length > 0) {
-                  scrollViewRef.current.scrollToEnd({ animated: false });
-                }
-              }, 300);
-              
-              setTimeout(() => {
-                if (scrollViewRef.current && messages.length > 0) {
-                  scrollViewRef.current.scrollToEnd({ animated: false });
-                }
-              }, 800);
-              
-              setTimeout(() => {
-                if (scrollViewRef.current && messages.length > 0) {
-                  scrollViewRef.current.scrollToEnd({ animated: false });
-                }
-              }, 1500);
-            }, 800);
-          }, 1000);
-        } else {
-          // For iOS joined rooms
+      if (isJoinedRoom && Platform.OS === 'android') {
+        // For Android joined rooms, position input immediately and then focus
+        // This prevents the keyboard from covering the input on first appearance
+        setTimeout(() => {
+          // Pre-emptively set the position before keyboard appears - very high position
+          setInputPosition(500);  // Much higher safe initial position well above keyboard
+          
+          // Short delay before focusing to ensure position is applied
           setTimeout(() => {
             textInputRef.current?.focus();
-          }, 100);
-        }
+          }, 300); // Longer delay for Android
+        }, 500); // Longer initial delay
+      } else if (isJoinedRoom) {
+        // For iOS joined rooms
+        setTimeout(() => {
+          textInputRef.current?.focus();
+        }, 100);
       }
     }
   }, [isFirstMount, isJoinedRoom]);
@@ -313,7 +287,28 @@ export default function CreatedRoomScreen() {
     }
   }, [isJoinedRoom]);
   
-  // Using proper KeyboardAvoidingView for all platforms now
+  // Extra effect for Android joined rooms to monitor keyboard status and adjust positioning
+  useEffect(() => {
+    if (isJoinedRoom && Platform.OS === 'android') {
+      // Check keyboard visibility every 100ms for the first 3 seconds after mounting
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        const isKeyboardVisible = Keyboard.isVisible(); // This returns a boolean directly
+        const currentTime = Date.now();
+        if (isKeyboardVisible) {
+          // Force position update if keyboard is visible
+          setInputPosition(prevPos => Math.max(prevPos, 500));
+        }
+        
+        // Stop checking after 3 seconds
+        if (currentTime - startTime > 3000) {
+          clearInterval(interval);
+        }
+      }, 100);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isJoinedRoom]);
 
   // Keyboard handling with special treatment for Android joined rooms
   useEffect(() => {
@@ -327,41 +322,26 @@ export default function CreatedRoomScreen() {
         setKeyboardShown(true);
         setKeyboardHeight(kbHeight);
         
-        // Special handling for Android joined rooms
+        // For Android joined rooms: position input above keyboard
         if (Platform.OS === 'android' && isJoinedRoom) {
-          // Track if this is the first keyboard appearance
-          if (!initialKeyboardShown) {
-            setInitialKeyboardShown(true);
-            // On first keyboard appearance, use a much higher position
-            setInputPosition(screenHeight * 0.5); // Position at 50% of screen height
-          } else {
-            // For subsequent appearances, use normal position
-            setInputPosition(kbHeight + 100); // Very large safety margin
-          }
+          // Position input field above keyboard with extra margin
+          setInputPosition(kbHeight + 50); // Much larger margin above keyboard for safety
           
-          // Multiple aggressive scroll attempts with longer delays and forced scroll
+          // Perform multiple scroll attempts for reliability
           requestAnimationFrame(() => {
-            if (scrollViewRef.current) {
-              scrollViewRef.current.scrollToEnd({ animated: false });
-            }
-            setTimeout(() => scrollToBottom(false, 0), 100);
+            scrollToBottom(false, 0);
+            
+            // Additional scroll attempts with staggered delays for reliability
+            setTimeout(() => scrollToBottom(false, 0), 50);  
+            setTimeout(() => scrollToBottom(false, 0), 150);
             setTimeout(() => scrollToBottom(false, 0), 300);
-            setTimeout(() => scrollToBottom(false, 0), 500);
-            setTimeout(() => scrollToBottom(false, 0), 800);
-            setTimeout(() => scrollToBottom(false, 0), 1200); // Very long delay
           });
-        } 
-        // Standard approach for iOS or created rooms
-        else if (messages.length > 0) {
-          // Use a shared approach with multiple scroll attempts for reliability
-          setTimeout(() => {
-            scrollToBottom(true, 0);
-            // Add some extra scroll attempts for Android
-            if (Platform.OS === 'android') {
-              setTimeout(() => scrollToBottom(true, 0), 100);
-              setTimeout(() => scrollToBottom(true, 0), 300);
-            }
-          }, Platform.OS === 'ios' ? 100 : 200);
+        } else {
+          // Standard behavior for iOS or created rooms
+          if (messages.length > 0) {
+            setTimeout(() => scrollToBottom(true, 0), 
+              Platform.OS === 'ios' ? 100 : 200);
+          }
         }
       }
     );
@@ -518,35 +498,30 @@ export default function CreatedRoomScreen() {
       {/* Main Chat Area */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={'padding'} // Use padding behavior for all platforms
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 95 : (isJoinedRoom ? 180 : 10)} // Extremely high offset for Android joined rooms
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 95 : 10}
         contentContainerStyle={{ flex: 1 }}
-        enabled={true} // Enable for all platforms
+        enabled={!(Platform.OS === 'android' && isJoinedRoom)} // Disable for Android joined rooms - we'll handle manually
       >
-        {/* Main content wrapper */}
-        <View style={{ flex: 1 }}>
-          {/* Message list */}
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={{ flex: 1 }}>
-              <ScrollView
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={{ flex: 1 }}>
+            <ScrollView
                 ref={scrollViewRef}
                 style={{ flex: 1 }}
-                keyboardShouldPersistTaps="always"
                 contentContainerStyle={{
                   flexGrow: 1,
                   paddingHorizontal: scaleSize(16),
                   paddingTop: verticalScale(12),
-                  // For Android joined rooms, add massive padding at bottom to ensure content is visible
-                  paddingBottom: Platform.OS === 'android' && isJoinedRoom 
-                    ? verticalScale(180) // Extremely large bottom padding for Android joined rooms
-                    : (keyboardHeight > 0 
-                      ? (Platform.OS === 'ios' ? verticalScale(8) : verticalScale(10)) 
-                      : verticalScale(14)),
+                  paddingBottom: Platform.OS === 'android' && isJoinedRoom
+                    ? (keyboardHeight > 0 ? verticalScale(80) : verticalScale(60))
+                    : (keyboardHeight > 0 ? (Platform.OS === 'ios' ? verticalScale(8) : verticalScale(10)) : verticalScale(14)),
                   ...(messages.length === 0 && {
                     justifyContent: 'center',
                     alignItems: 'center'
                   })
-                }}
+                }
+                }
+                keyboardShouldPersistTaps="always"
                 keyboardDismissMode="interactive"
                 showsVerticalScrollIndicator={false}
                 onContentSizeChange={() => {
@@ -588,35 +563,30 @@ export default function CreatedRoomScreen() {
                 )}
               </ScrollView>
             </View>
-          </TouchableWithoutFeedback>
-          
-          {/* Input Area */}
-          <View style={[
-            styles.inputContainer, 
-            { 
-              backgroundColor: appTheme.background, 
-              borderTopColor: appTheme.border,
-              paddingBottom: Platform.OS === 'ios' ? verticalScale(6) : verticalScale(2),
-              paddingTop: verticalScale(6),
-              // Special handling for Android joined rooms with keyboard-immune bottom positioning
-              ...(Platform.OS === 'android' && isJoinedRoom ? {
-                position: 'absolute', // Position absolutely
-                left: 0,
-                right: 0,
-                bottom: screenHeight * 0.7, // Position in bottom 30% of screen, WELL above any keyboard
-                maxHeight: 70, // Constrain height to ensure it's visible
-                paddingBottom: verticalScale(10), // Extra padding
-                paddingTop: verticalScale(10), // Extra padding
-                borderTopWidth: 1,
-                borderBottomWidth: 1,
-                backgroundColor: appTheme.background, // Ensure background is solid
-                elevation: 10, // Strong Android shadow
-                zIndex: 9999 // Maximum z-index to ensure visibility
-              } : {})
-            }
-          ]}>
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-              <View style={{flex: 1, flexDirection: 'row', alignItems: 'flex-end', marginBottom: Platform.OS === 'android' ? 2 : 0}}>
+            {/* Input Area */}
+            <View style={[
+              styles.inputContainer, 
+              { 
+                backgroundColor: appTheme.background, 
+                borderTopColor: appTheme.border,
+                paddingBottom: Platform.OS === 'ios' ? verticalScale(6) : verticalScale(2),
+                paddingTop: verticalScale(6),
+                // Position absolutely for Android joined rooms
+                ...(Platform.OS === 'android' && isJoinedRoom ? {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: inputPosition,
+                  elevation: 10, // Ensure it's above other elements
+                  zIndex: 1000, // Additional z-index for safety
+                  backgroundColor: appTheme.background, // Ensure background is opaque
+                  borderColor: appTheme.border,
+                  borderTopWidth: 1,
+                } : {})
+              }
+            ]}>
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+                <View style={{flex: 1, flexDirection: 'row', alignItems: 'flex-end', marginBottom: Platform.OS === 'android' ? 2 : 0}}>
                 <View style={[styles.inputWrapper, { backgroundColor: appTheme.card, borderColor: appTheme.border }]}> 
                   <TextInput
                     ref={textInputRef}
@@ -648,9 +618,9 @@ export default function CreatedRoomScreen() {
                   <Ionicons name="send" size={scaleFont(24)} color="#fff" style={styles.sendIcon} />
                 </Pressable>
               </View>
-            </TouchableWithoutFeedback>
+            </View>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
       {/* Options Modal */}
       <Modal

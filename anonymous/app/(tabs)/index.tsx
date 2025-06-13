@@ -1,11 +1,12 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, ColorValue } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, SafeAreaView, ColorValue, TouchableOpacity } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
+import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
 import { GlassmorphicCard } from '@/components/GlassmorphicCard';
 import { Button } from '../../components/Button';
@@ -14,6 +15,7 @@ import { ThemeToggle } from '@/components/themeToggle';
 export default function HomeScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeStore();
+  const { isAuthenticated, user, logout } = useAuthStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   
   const handleCreateRoom = () => {
@@ -22,6 +24,18 @@ export default function HomeScreen() {
   
   const handleJoinRoom = () => {
     router.push('/join-room');
+  };
+  
+  const handleLogin = () => {
+    router.push('/login');
+  };
+  
+  const handleSignup = () => {
+    router.push('/signup');
+  };
+  
+  const handleLogout = () => {
+    logout();
   };
   
   return (
@@ -36,7 +50,27 @@ export default function HomeScreen() {
           <Text style={[styles.title, { color: theme.text }]}>
             is<Text style={{ color: theme.accent }}>Thatu</Text>
           </Text>
-          <ThemeToggle />
+          <View style={styles.headerRight}>
+            {isAuthenticated ? (
+              <TouchableOpacity 
+                style={[styles.profileButton, { backgroundColor: theme.accent + '20' }]}
+                onPress={handleLogout}
+              >
+                <Feather name="user" size={18} color={theme.accent} />
+                <Text style={[styles.profileText, { color: theme.accent }]}>
+                  {user?.username || 'User'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={[styles.authButton, { backgroundColor: theme.accent + '20' }]}
+                onPress={handleLogin}
+              >
+                <Text style={[styles.authButtonText, { color: theme.accent }]}>Login</Text>
+              </TouchableOpacity>
+            )}
+            <ThemeToggle />
+          </View>
         </View>
         
         <ScrollView 
@@ -113,6 +147,40 @@ export default function HomeScreen() {
               />
             </View>
           </View>
+          
+          {!isAuthenticated && (
+            <View style={styles.authSection}>
+              <LinearGradient
+                colors={isDarkMode 
+                  ? ['rgba(187, 134, 252, 0.1)', 'rgba(124, 77, 255, 0.05)'] 
+                  : ['rgba(124, 77, 255, 0.08)', 'rgba(187, 134, 252, 0.03)']}
+                style={styles.authCard}
+              >
+                <Text style={[styles.authTitle, { color: theme.text }]}>
+                  Create an Account
+                </Text>
+                <Text style={[styles.authDescription, { color: theme.secondaryText }]}>
+                  Sign up to save your rooms and chat history
+                </Text>
+                <View style={styles.authButtons}>
+                  <Button
+                    title="Sign Up"
+                    onPress={handleSignup}
+                    variant="primary"
+                    size="small"
+                    style={{ marginRight: 10, flex: 1 }}
+                  />
+                  <Button
+                    title="Login"
+                    onPress={handleLogin}
+                    variant="outline"
+                    size="small"
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </LinearGradient>
+            </View>
+          )}
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>
@@ -122,6 +190,57 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  profileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 10,
+  },
+  profileText: {
+    fontSize: RFValue(12),
+    fontWeight: '600',
+    marginLeft: 5,
+  },
+  authButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 10,
+  },
+  authButtonText: {
+    fontSize: RFValue(12),
+    fontWeight: '600',
+  },
+  authSection: {
+    marginTop: hp('4%'),
+    marginBottom: hp('4%'),
+    paddingHorizontal: wp('5%'),
+  },
+  authCard: {
+    padding: wp('5%'),
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 77, 255, 0.2)',
+  },
+  authTitle: {
+    fontSize: RFValue(18),
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  authDescription: {
+    fontSize: RFValue(14),
+    marginBottom: 16,
+  },
+  authButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   background: {
     flex: 1,

@@ -3,6 +3,7 @@ import {
   StyleSheet, 
   Text, 
   Pressable, 
+  View, 
   ViewStyle, 
   TextStyle,
   ActivityIndicator,
@@ -126,7 +127,9 @@ export const Button = ({
         style={buttonStyles}
       >
         {loading ? (
-          <ActivityIndicator color={getTextColor()} size="small" />
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <ActivityIndicator color={getTextColor()} size="large" />
+          </View>
         ) : (
           <>
             {icon}

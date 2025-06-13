@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, Platform, Pressable, Alert, Modal, TouchableOpacity } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, SafeAreaView, Platform, Pressable, Alert, Modal, TouchableOpacity, Keyboard, ScrollView, KeyboardAvoidingView } from 'react-native';
+// Removed KeyboardAwareScrollView in favor of native components
 import { Feather } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
@@ -177,6 +177,7 @@ export default function CreateRoomScreen() {
   const [showEmojiSelector, setShowEmojiSelector] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [roomCode, setRoomCode] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const [copied, setCopied] = useState(false);
   
@@ -205,6 +206,31 @@ export default function CreateRoomScreen() {
     }, 1000);
   };
   
+  // Enhanced keyboard handling
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    
+    const showSubscription = Keyboard.addListener(
+      showEvent,
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+
+    const hideSubscription = Keyboard.addListener(
+      hideEvent,
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+  
   // Accent and background colors
   const accent = isDarkMode ? '#bb86fc' : '#7c4dff';
   const cardBg = isDarkMode ? 'rgba(30, 18, 50, 0.97)' : '#fff';
@@ -214,14 +240,23 @@ export default function CreateRoomScreen() {
   const screenBg = isDarkMode ? '#18122B' : '#f5f6ff';
 
   return (
-    <KeyboardAwareScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      enableOnAndroid={true}
-      enableAutomaticScroll={true}
-    >
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        enabled
+      >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            ...styles.content,
+            paddingBottom: keyboardHeight > 0 ? keyboardHeight / 3 : Math.max(height * 0.05, 32)
+          }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="interactive"
+        >
       <View style={[styles.emojiFloatContainer, { backgroundColor: emojiBg, shadowColor: emojiShadow }]}> 
         <Text style={styles.emojiFloatText}>{selectedEmoji}</Text>
       </View>
@@ -281,6 +316,8 @@ export default function CreateRoomScreen() {
           textStyle={{ fontWeight: 'bold', fontSize: 18 }}
         />
       </View>
-    </KeyboardAwareScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

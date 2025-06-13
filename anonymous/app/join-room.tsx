@@ -1,11 +1,12 @@
-import React, { useState, useRef } from 'react';
-import { Text, View, SafeAreaView, KeyboardAvoidingView, Platform, Pressable, StyleSheet, useWindowDimensions, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { Text, View, SafeAreaView, KeyboardAvoidingView, Platform, Pressable, StyleSheet, useWindowDimensions, ScrollView, TouchableWithoutFeedback, Keyboard, Animated } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useThemeStore } from '@/store/theme-store';
 import { colors } from '@/constants/colors';
 import { InputField } from '@/components/InputField';
 import { Button } from '../components/Button';
+import { verticalScale } from '../utils/responsive';
 
 type CreateStylesParams = {
   isDarkMode: boolean;
@@ -31,7 +32,6 @@ function createStyles({ isDarkMode, width, height, theme }: CreateStylesParams) 
     content: {
       flex: 1,
       paddingHorizontal: Math.max(width * 0.04, 16),
-      paddingTop: Math.max(height * 0.02, 12),
       paddingBottom: Math.max(height * 0.03, 18),
       alignItems: 'center',
       justifyContent: 'center',
@@ -39,10 +39,13 @@ function createStyles({ isDarkMode, width, height, theme }: CreateStylesParams) 
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Math.max(height * 0.01, 8),
-      marginTop: Math.max(height * 0.03, 18),
+      marginBottom: Math.max(height * 0.02, 16), // Increased bottom margin
+      marginTop: Math.max(height * 0.05, 20), // Increased top margin
       width: '100%',
-      paddingHorizontal: 0,
+      paddingHorizontal: Math.max(width * 0.04, 16),
+      paddingBottom: Math.max(height * 0.01, 8),
+      backgroundColor: theme.background,
+      zIndex: 10,
     },
     backButton: {
       borderRadius: 20,
@@ -64,10 +67,10 @@ function createStyles({ isDarkMode, width, height, theme }: CreateStylesParams) 
       textAlign: 'left',
     },
     emojiFloatContainer: {
+      position: 'absolute',
+      top: -Math.max(width * 0.15, 28), // Half of the container height to create floating effect
       alignSelf: 'center',
-      marginTop: 0,
-      marginBottom: -Math.max(height * 0.04, 18),
-      zIndex: 2,
+      zIndex: 10,
       width: Math.max(width * 0.18, 56),
       height: Math.max(width * 0.18, 56),
       borderRadius: Math.max(width * 0.09, 28),
@@ -81,7 +84,7 @@ function createStyles({ isDarkMode, width, height, theme }: CreateStylesParams) 
       elevation: 8,
     },
     formCard: {
-      marginTop: Math.max(height * 0.06, 32),
+      marginTop: Math.max(height * 0.05, 28), // Increased margin to make room for floating icon
       marginBottom: Math.max(height * 0.02, 12),
       width: '96%',
       maxWidth: 420,
@@ -89,7 +92,8 @@ function createStyles({ isDarkMode, width, height, theme }: CreateStylesParams) 
       alignSelf: 'center',
       alignItems: 'center',
       paddingHorizontal: Math.max(width * 0.06, 18),
-      paddingVertical: Math.max(height * 0.025, 14),
+      paddingTop: Math.max(height * 0.035, 20), // Increased top padding to make room for icon
+      paddingBottom: Math.max(height * 0.025, 14),
       borderRadius: Math.max(width * 0.04, 18),
       backgroundColor: isDarkMode ? 'rgba(60, 16, 83, 0.97)' : 'rgba(90, 40, 120, 0.95)',
       shadowColor: isDarkMode ? '#000' : '#c5bfff',
@@ -158,7 +162,7 @@ export default function JoinRoomScreen() {
   const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
-  const inputRef = useRef(null);
+  const inputRef = useRef<any>(null);
 
   // Only allow numeric input and auto-submit if 6 digits
   const handleInputChange = (text: string) => {
@@ -190,34 +194,124 @@ export default function JoinRoomScreen() {
     }, 1000);
   };
 
+  // Add state for keyboard height
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  
+  // Auto-focus input field when component mounts
+  React.useEffect(() => {
+    // Small delay to ensure component is fully rendered
+    const timer = setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Enhanced keyboard handling with better behavior and animations
+  React.useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    
+    const showSubscription = Keyboard.addListener(
+      showEvent,
+      (e) => {
+        const keyboardHeight = e.endCoordinates.height;
+        // Use a smoother animation for keyboard appearance
+        if (Platform.OS === 'ios') {
+          // iOS has built-in animation with keyboardWillShow
+          setKeyboardHeight(keyboardHeight);
+        } else {
+          // For Android, add a small delay to sync with the keyboard animation
+          setTimeout(() => {
+            setKeyboardHeight(keyboardHeight);
+          }, 50);
+        }
+      }
+    );
+
+    const hideSubscription = Keyboard.addListener(
+      hideEvent,
+      () => {
+        // Use a smoother animation for keyboard disappearance
+        if (Platform.OS === 'ios') {
+          // iOS has built-in animation with keyboardWillHide
+          setKeyboardHeight(0);
+        } else {
+          // For Android, add a small delay to sync with the keyboard animation
+          setTimeout(() => {
+            setKeyboardHeight(0);
+          }, 50);
+        }
+      }
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  // Add fade animation for form card
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
+
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      {/* Fixed Header - Always stays at the top */}
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8} accessibilityLabel="Go back">
+          <Feather name="arrow-left" size={28} color={isDarkMode ? '#fff' : '#7c4dff'} />
+        </Pressable>
         <View style={{ flex: 1 }}>
-          <ScrollView
-            contentContainerStyle={{ paddingBottom: 0 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.content}>
-              <View style={styles.header}>
-                <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8} accessibilityLabel="Go back">
-                  <Feather name="arrow-left" size={28} color={isDarkMode ? '#fff' : '#7c4dff'} />
-                </Pressable>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>Join Room</Text>
-                  <Text style={styles.subtitle}>Join an anonymous conversation instantly</Text>
-                </View>
-              </View>
-              <View style={styles.emojiFloatContainer}>
-                <MaterialCommunityIcons name="link" size={Math.max(width * 0.08, 34)} color={isDarkMode ? colors.dark.secondaryAccent : colors.light.accent} />
-              </View>
-              <View style={styles.formCard}>
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                  keyboardVerticalOffset={0}
-                  style={{ width: '100%' }}
-                >
+          <Text style={styles.title}>Join Room</Text>
+          <Text style={styles.subtitle}>Join an anonymous conversation instantly</Text>
+        </View>
+      </View>
+      
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
+        contentContainerStyle={{ flex: 1 }}
+        enabled
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={{
+                paddingBottom: keyboardHeight > 0 ? verticalScale(20) : 0,
+                paddingTop: keyboardHeight > 0 ? verticalScale(10) : verticalScale(20),
+                flexGrow: 1,
+                justifyContent: keyboardHeight > 0 ? 'flex-start' : 'center'
+              }}
+              keyboardShouldPersistTaps="handled"
+              scrollEventThrottle={16}
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+            >
+            <View style={[styles.content, { paddingTop: 0 }]}>
+              <Animated.View 
+                style={[
+                  styles.formCard, 
+                  { 
+                    marginTop: keyboardHeight > 0 ? Math.max(height * 0.01, 5) : Math.max(height * 0.03, 16),
+                    transform: [{ translateY: keyboardHeight > 0 ? -Math.min(keyboardHeight * 0.05, 20) : 0 }],
+                    opacity: fadeAnim // Apply fade animation
+                  }
+                ]}
+              >
+                <View style={{ width: '100%', position: 'relative' }}>
+                  <View style={styles.emojiFloatContainer}>
+                    <MaterialCommunityIcons name="link" size={Math.max(width * 0.08, 34)} color={isDarkMode ? colors.dark.secondaryAccent : colors.light.accent} />
+                  </View>
                   <View style={styles.formSection}>
                     <Text style={styles.sectionTitle}>Room Code</Text>
                     <InputField
@@ -245,12 +339,13 @@ export default function JoinRoomScreen() {
                     style={styles.joinButton}
                   />
                   <Text style={styles.privacyNote}>Your identity will remain anonymous in the chat room.</Text>
-                </KeyboardAvoidingView>
-              </View>
+                </View>
+              </Animated.View>
             </View>
-          </ScrollView>
-        </View>
-      </TouchableWithoutFeedback>
+            </ScrollView>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
