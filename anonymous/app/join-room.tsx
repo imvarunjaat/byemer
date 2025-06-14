@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Text, View, SafeAreaView, KeyboardAvoidingView, Platform, Pressable, StyleSheet, useWindowDimensions, ScrollView, TouchableWithoutFeedback, Keyboard, Animated } from 'react-native';
+import { Text, View, SafeAreaView, KeyboardAvoidingView, Platform, Pressable, StyleSheet, useWindowDimensions, ScrollView, TouchableWithoutFeedback, Keyboard, Animated, Alert } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useThemeStore } from '@/store/theme-store';
+import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
 import { InputField } from '@/components/InputField';
 import { Button } from '../components/Button';
 import { verticalScale } from '../utils/responsive';
+import { roomService } from '@/lib/room-service';
 
 type CreateStylesParams = {
   isDarkMode: boolean;
@@ -158,10 +160,15 @@ export default function JoinRoomScreen() {
   const theme = isDarkMode ? colors.dark : colors.light;
   const { width, height } = useWindowDimensions();
   const styles = createStyles({ isDarkMode, width, height, theme });
+  const { user, isAuthenticated } = useAuthStore();
 
   const [roomCode, setRoomCode] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [accessCode, setAccessCode] = useState('');
+  const [step, setStep] = useState<'code' | 'nickname' | 'accessCode'>('code');
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState('');
+  const [roomData, setRoomData] = useState<any>(null);
   const inputRef = useRef<any>(null);
 
   // Only allow numeric input and auto-submit if 6 digits
@@ -172,26 +179,111 @@ export default function JoinRoomScreen() {
     if (error) setError('');
     if (sanitized.length === 6) {
       Keyboard.dismiss();
-      handleJoinRoom(sanitized);
+      checkRoomExists(sanitized);
     }
   };
 
-  const handleJoinRoom = (codeOverride?: string) => {
-    const code = typeof codeOverride === 'string' ? codeOverride : roomCode;
+  const checkRoomExists = async (code: string) => {
     if (!code.trim()) {
       setError('Please enter a room code');
       return;
     }
-    setError('');
+    
+    // Check if user is authenticated
+    if (!isAuthenticated || !user) {
+      Alert.alert(
+        "Authentication Required",
+        "You need to log in before joining a room.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Go to Login", onPress: () => router.push("/login") }
+        ]
+      );
+      return;
+    }
+    
     setIsJoining(true);
-    setTimeout(() => {
-      setIsJoining(false);
-      if (code.length === 6 && /^\d+$/.test(code)) {
-        router.push(`/room/${code}`);
-      } else {
-        setError('Invalid room code. Please try again.');
+    setError('');
+    
+    try {
+      // Find room by ID or code
+      const room = await roomService.getRoomById(code);
+      
+      if (!room) {
+        setError('Room not found. Please check the code and try again.');
+        setIsJoining(false);
+        return;
       }
-    }, 1000);
+      
+      setRoomData(room);
+      
+      // If it's a private room, ask for access code next
+      if (room.is_private && room.access_code) {
+        setStep('accessCode');
+        setIsJoining(false);
+        return;
+      }
+      
+      // Otherwise, proceed to nickname step
+      setStep('nickname');
+      setIsJoining(false);
+    } catch (error) {
+      console.error('Error checking room:', error);
+      setError('Unable to check room. Please try again.');
+      setIsJoining(false);
+    }
+  };
+  
+  const checkAccessCode = () => {
+    if (!accessCode.trim()) {
+      setError('Please enter the access code');
+      return;
+    }
+    
+    if (roomData && roomData.access_code === accessCode) {
+      setError('');
+      setStep('nickname');
+    } else {
+      setError('Incorrect access code');
+    }
+  };
+  
+  const handleJoinRoom = async () => {
+    if (!nickname.trim()) {
+      setError('Please enter a nickname');
+      return;
+    }
+    
+    if (!roomData || !roomData.id) {
+      setError('Room data is missing');
+      return;
+    }
+    
+    setIsJoining(true);
+    setError('');
+    
+    try {
+      // Use user ID if authenticated, or generate a random one for anonymous
+      const userId = isAuthenticated && user ? user.id : `anon_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Join the room in Supabase
+      const joined = await roomService.joinRoom(roomData.id, userId);
+      
+      if (!joined) {
+        throw new Error('Failed to join room');
+      }
+      
+      // Navigate to the room with the room ID
+      router.push({
+        pathname: "/room/[id]",
+        params: { id: roomData.id, nickname }
+      });
+      
+    } catch (error) {
+      console.error('Error joining room:', error);
+      setError('Failed to join room. Please try again.');
+      setIsJoining(false);
+    }
   };
 
   // Add state for keyboard height
@@ -312,32 +404,100 @@ export default function JoinRoomScreen() {
                   <View style={styles.emojiFloatContainer}>
                     <MaterialCommunityIcons name="link" size={Math.max(width * 0.08, 34)} color={isDarkMode ? colors.dark.secondaryAccent : colors.light.accent} />
                   </View>
-                  <View style={styles.formSection}>
-                    <Text style={styles.sectionTitle}>Room Code</Text>
-                    <InputField
-                      ref={inputRef}
-                      value={roomCode}
-                      onChangeText={handleInputChange}
-                      placeholder="Enter 6-digit code"
-                      keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
-                      maxLength={6}
-                      error={error}
-                      autoFocus
-                      returnKeyType="done"
-                      onSubmitEditing={() => handleJoinRoom()}
-                      containerStyle={styles.inputSection}
-                    />
-                  </View>
-                  <View style={styles.infoSection}>
-                    <Text style={styles.infoText}>Ask your friend for the 6-digit room code to join their anonymous chat room.</Text>
-                  </View>
-                  <Button
-                    title="Join Anonymously"
-                    onPress={() => handleJoinRoom()}
-                    loading={isJoining}
-                    disabled={roomCode.length !== 6}
-                    style={styles.joinButton}
-                  />
+                  {step === 'code' && (
+                    <>
+                      <View style={styles.formSection}>
+                        <Text style={styles.sectionTitle}>Room Code</Text>
+                        <InputField
+                          ref={inputRef}
+                          value={roomCode}
+                          onChangeText={handleInputChange}
+                          placeholder="Enter 6-digit code"
+                          keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
+                          maxLength={6}
+                          error={error}
+                          autoFocus
+                          returnKeyType="done"
+                          onSubmitEditing={() => checkRoomExists(roomCode)}
+                          containerStyle={styles.inputSection}
+                        />
+                      </View>
+                      <View style={styles.infoSection}>
+                        <Text style={styles.infoText}>Ask your friend for the 6-digit room code to join their anonymous chat room.</Text>
+                      </View>
+                      <Button
+                        title="Check Room"
+                        onPress={() => checkRoomExists(roomCode)}
+                        loading={isJoining}
+                        disabled={roomCode.length !== 6}
+                        style={styles.joinButton}
+                      />
+                    </>
+                  )}
+                  
+                  {step === 'accessCode' && (
+                    <>
+                      <View style={styles.formSection}>
+                        <Text style={styles.sectionTitle}>Access Code</Text>
+                        <InputField
+                          value={accessCode}
+                          onChangeText={(text) => {
+                            setAccessCode(text);
+                            if (error) setError('');
+                          }}
+                          placeholder="Enter private room access code"
+                          secureTextEntry
+                          error={error}
+                          autoFocus
+                          returnKeyType="next"
+                          onSubmitEditing={checkAccessCode}
+                          containerStyle={styles.inputSection}
+                        />
+                      </View>
+                      <View style={styles.infoSection}>
+                        <Text style={styles.infoText}>This is a private room. Please enter the access code provided by the room creator.</Text>
+                      </View>
+                      <Button
+                        title="Continue"
+                        onPress={checkAccessCode}
+                        loading={isJoining}
+                        disabled={!accessCode.trim()}
+                        style={styles.joinButton}
+                      />
+                    </>
+                  )}
+                  
+                  {step === 'nickname' && (
+                    <>
+                      <View style={styles.formSection}>
+                        <Text style={styles.sectionTitle}>Your Nickname</Text>
+                        <InputField
+                          value={nickname}
+                          onChangeText={(text) => {
+                            setNickname(text);
+                            if (error) setError('');
+                          }}
+                          placeholder="Enter your nickname"
+                          error={error}
+                          autoFocus
+                          returnKeyType="done"
+                          onSubmitEditing={handleJoinRoom}
+                          containerStyle={styles.inputSection}
+                          maxLength={20}
+                        />
+                      </View>
+                      <View style={styles.infoSection}>
+                        <Text style={styles.infoText}>Choose a nickname that will be shown to others in the room.</Text>
+                      </View>
+                      <Button
+                        title="Join Anonymously"
+                        onPress={handleJoinRoom}
+                        loading={isJoining}
+                        disabled={!nickname.trim()}
+                        style={styles.joinButton}
+                      />
+                    </>
+                  )}
                   <Text style={styles.privacyNote}>Your identity will remain anonymous in the chat room.</Text>
                 </View>
               </Animated.View>

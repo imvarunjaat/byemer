@@ -4,6 +4,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { useThemeStore } from "@/store/theme-store";
+import { useAuthStore } from "@/store/auth-store";
+import { configureDeepLinking } from "@/lib/deep-linking";
 
 export const unstable_settings = {
   initialRouteName: "(tabs)",
@@ -28,6 +30,17 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
+      
+      // Initialize deep linking for authentication
+      configureDeepLinking();
+      
+      // Reset any stale verification states but keep user session
+      const { clearSuccess, clearError, checkSession } = useAuthStore.getState();
+      clearSuccess();
+      clearError();
+      
+      // Check for existing session on app startup
+      checkSession();
     }
   }, [loaded]);
 
@@ -87,6 +100,35 @@ function RootLayoutNav() {
         />
         <Stack.Screen 
           name="signup" 
+          options={{ 
+            headerShown: false,
+            presentation: 'card',
+            animation: 'slide_from_bottom',
+          }} 
+        />
+        <Stack.Screen 
+          name="auth/callback" 
+          options={{ 
+            headerShown: false,
+            presentation: 'modal',
+          }} 
+        />
+        <Stack.Screen 
+          name="auth/confirm" 
+          options={{ 
+            headerShown: false,
+            presentation: 'modal',
+          }} 
+        />
+        <Stack.Screen 
+          name="auth-error" 
+          options={{ 
+            headerShown: false,
+            presentation: 'modal',
+          }} 
+        />
+        <Stack.Screen 
+          name="otp-login" 
           options={{ 
             headerShown: false,
             presentation: 'card',

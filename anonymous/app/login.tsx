@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
@@ -8,7 +10,8 @@ import {
   Animated,
   Dimensions,
   Platform,
-  Alert
+  Alert,
+  TextInput
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Feather } from '@expo/vector-icons';
@@ -22,16 +25,24 @@ import { colors } from '@/constants/colors';
 
 import { InputField } from '@/components/InputField';
 import { Button } from '../components/Button';
+// Using useState from React import above
 
 export default function LoginScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeStore();
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { 
+    login, 
+    error: authError, 
+    success: authSuccess, 
+    isLoading, 
+    clearError, 
+    clearSuccess 
+  } = useAuthStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [secureTextEntry, setSecureTextEntry] = useState(true);
+  const [emailSent, setEmailSent] = useState(false);
+  
   const [fadeAnim] = useState(new Animated.Value(0));
   
   // Animation on component mount
@@ -41,31 +52,30 @@ export default function LoginScreen() {
       duration: 800,
       useNativeDriver: true,
     }).start();
+    
+    // Reset email sent state and clear any previous states when component mounts
+    setEmailSent(false);
+    clearError();
+    clearSuccess();
+    
+    return () => {
+      clearError();
+      clearSuccess();
+    };
   }, []);
-  
-  // Handle error display
+
+  // Handle success state changes from auth store
   useEffect(() => {
-    if (error) {
-      Alert.alert('Login Error', error, [
-        { text: 'OK', onPress: () => clearError() }
-      ]);
+    if (authSuccess && authSuccess.includes('Verification email sent')) {
+      setEmailSent(true);
     }
-  }, [error]);
-  
-  const handleLogin = async () => {
-    Keyboard.dismiss();
-    if (!email || !password) {
-      Alert.alert('Missing Fields', 'Please enter both email and password');
-      return;
-    }
-    await login(email, password);
-  };
-  
-  const toggleSecureEntry = () => {
-    setSecureTextEntry(!secureTextEntry);
-  };
+  }, [authSuccess]);
   
   const navigateToSignup = () => {
+    // Clear states before navigation
+    clearError();
+    clearSuccess();
+    setEmailSent(false);
     router.push('/signup');
   };
   
@@ -115,56 +125,51 @@ export default function LoginScreen() {
           
           <View style={[styles.formCard, { backgroundColor: theme.card }]}>
             <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>Email</Text>
-              <InputField
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Enter your email"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                containerStyle={styles.fieldContainer}
-                leftIcon={<Feather name="mail" size={20} color={theme.secondaryText} />}
-                placeholderTextColor={theme.secondaryText}
-              />
+              <Text style={[styles.inputLabel, { color: theme.text }]}>Email address</Text>
+              <View style={[styles.inputWrapper, { borderColor: theme.border }]}>
+                <View style={styles.iconContainer}>
+                  <Feather name="mail" size={20} color={theme.secondaryText} />
+                </View>
+                <TextInput
+                  style={[styles.input, { color: theme.text }]}
+                  placeholder="your@email.com"
+                  placeholderTextColor={theme.secondaryText}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  value={email}
+                  onChangeText={(text: string) => setEmail(text)}
+                  editable={!isLoading}
+                />
+              </View>
             </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>Password</Text>
-              <InputField
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Enter your password"
-                secureTextEntry={secureTextEntry}
-                containerStyle={styles.fieldContainer}
-                leftIcon={<Feather name="lock" size={20} color={theme.secondaryText} />}
-                rightIcon={
-                  <TouchableOpacity 
-                    onPress={toggleSecureEntry}
-                    hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-                  >
-                    <Feather 
-                      name={secureTextEntry ? 'eye' : 'eye-off'} 
-                      size={20} 
-                      color={theme.secondaryText} 
-                    />
-                  </TouchableOpacity>
-                }
-                placeholderTextColor={theme.secondaryText}
-              />
-            </View>
-            
-            <TouchableOpacity style={styles.forgotPassword}>
-              <Text style={[styles.forgotPasswordText, { color: theme.accent }]}>
-                Forgot Password?
+
+            {emailSent && (
+              <View style={styles.successContainer}>
+                <Feather name="check-circle" size={18} color={theme.success || '#4CAF50'} style={styles.successIcon} />
+                <Text style={[styles.successText, { color: theme.success || '#4CAF50' }]}>
+                  Verification email sent! Please check your inbox.
+                </Text>
+              </View>
+            )}
+
+            {authError && !emailSent && (
+              <Text style={[styles.errorText, { color: theme.error || '#ff3b30' }]}>
+                {authError}
               </Text>
-            </TouchableOpacity>
-            
+            )}
+
             <Button
-              title="Sign In"
-              onPress={handleLogin}
-              loading={isLoading}
-              style={styles.loginButton}
-              textStyle={{ fontWeight: 'bold', fontSize: RFValue(16) }}
+              title={isLoading ? 'Sending...' : 'Send Login Link'}
+              onPress={() => {
+                if (email && !isLoading) {
+                  clearError(); // Clear any previous errors
+                  login(email);
+                  // Success will be handled by the useEffect
+                }
+              }}
+              style={styles.button}
+              disabled={!email || isLoading}
             />
             
             <View style={styles.signupContainer}>
@@ -184,7 +189,33 @@ export default function LoginScreen() {
   );
 }
 
+
+
 const styles = StyleSheet.create({
+  // Main input style
+  button: {
+    marginTop: hp('3%'),
+  },
+  errorText: {
+    marginTop: hp('2%'),
+    fontSize: Math.min(RFValue(14), hp('2%')),
+    textAlign: 'center',
+  },
+  successContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: hp('2%'),
+  },
+  successIcon: {
+    marginRight: 8,
+  },
+  successText: {
+    fontSize: Math.min(RFValue(14), hp('2%')),
+    flex: 1,
+  },
   fieldContainer: {
     marginBottom: 0,
   },
@@ -323,6 +354,27 @@ const styles = StyleSheet.create({
   signupLink: {
     fontSize: Math.min(RFValue(14), hp('2%')),
     fontWeight: '600',
+    includeFontPadding: false,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(150,150,150,0.2)',
+    width: '100%',
+    marginVertical: hp('2%'),
+  },
+  otpButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: hp('1.5%'),
+    width: '100%',
+  },
+  otpIcon: {
+    marginRight: 8,
+  },
+  otpButtonText: {
+    fontSize: Math.min(RFValue(14), hp('2%')),
+    fontWeight: '500',
     includeFontPadding: false,
   },
 });

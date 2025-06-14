@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Pressable } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Pressable, Alert } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
+import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
 import { GlassmorphicCard } from '@/components/GlassmorphicCard';
 import { InputField } from '@/components/InputField';
@@ -15,13 +16,32 @@ import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useThemeStore();
+  const { logout, user } = useAuthStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   const router = useRouter();
   
-  const [nickname, setNickname] = useState('Anonymous');
+  const [nickname, setNickname] = useState(user?.username || 'Anonymous');
   const [selectedEmoji, setSelectedEmoji] = useState('🎭');
   const [showEmojiSelector, setShowEmojiSelector] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Logout', 
+          onPress: () => {
+            logout();
+            router.replace('/');
+          }, 
+          style: 'destructive' 
+        },
+      ]
+    );
+  };
   
   const handleEmojiSelect = (emoji: string) => {
     setSelectedEmoji(emoji);
@@ -120,7 +140,7 @@ export default function ProfileScreen() {
             </View>
             <Button
               title="Log Out"
-              onPress={() => {}}
+              onPress={handleLogout}
               variant="outline"
               icon={<Ionicons name="log-out" size={20} color={theme.accent} />}
               style={{ ...styles.logoutButton, marginTop: hp('2%'), marginBottom: hp('1%') }}

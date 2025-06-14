@@ -27,9 +27,12 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStore } from '@/store/theme-store';
+import { useAuthStore } from '@/store/auth-store';
 import { colors as themeColors } from '@/constants/colors';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { scaleSize, verticalScale, scaleFont } from '../../utils/responsive';
+import { roomService, messageService } from '@/lib/room-service';
+import { supabase, Room, RoomParticipant, Message as SupabaseMessage } from '@/lib/supabase';
 
 type Style = ViewStyle | TextStyle | ImageStyle | Animated.AnimatedProps<ViewStyle>; // Specified ViewStyle for AnimatedProps
 
@@ -45,12 +48,16 @@ type MessageType = {
   text: string;
   isCurrentUser: boolean;
   timestamp: number;
+  nickname?: string;
 };
 
 type RoomMember = {
   id: string;
   name: string;
   isAdmin: boolean;
+  joined_at?: string;
+  last_seen_at?: string;
+  is_active?: boolean;
 };
 
 // OptionItem and OptionItemProps must be defined above the main component so they are always in scope
@@ -106,8 +113,9 @@ const OptionItem: React.FC<OptionItemProps> = React.memo((props) => {
 
 export default function CreatedRoomScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; name?: string; emoji?: string; code?: string; joined?: string }>();
+  const params = useLocalSearchParams<{ id?: string; name?: string; emoji?: string; joined?: string; nickname?: string }>();
   const { isDarkMode } = useThemeStore();
+  const { user, isAuthenticated } = useAuthStore();
   const { width, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -120,18 +128,121 @@ export default function CreatedRoomScreen() {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [isJoinedRoom] = useState(params.joined === 'true');
   const [keyboardShown, setKeyboardShown] = useState(false);
-
+  const [roomData, setRoomData] = useState<Room | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
+  // User nickname - from params or default
+  const [nickname, setNickname] = useState(params.nickname || 'Anonymous');
+  
+  // For managing real-time subscription
+  const messageSubscriptionRef = useRef<() => void | null>(null);
+
   const [members, setMembers] = useState<RoomMember[]>([
-    // If 'joined' param is present, user is not admin
-    { id: '1', name: 'You', isAdmin: !isJoinedRoom },
-    { id: '2', name: 'User 2', isAdmin: isJoinedRoom },
-    { id: '3', name: 'User 3', isAdmin: false },
+    // Initial empty state, will be populated from database
+    { id: isAuthenticated && user ? user.id : 'you', name: 'You', isAdmin: false },
   ]);
   
   // Room details with defaults
-  const { id = Date.now().toString(), name: roomName = 'Room', emoji = '💬', code } = params;
-  const [roomCode] = useState(code || generateRoomCode());
+  const { id } = params;
+  const [roomCode, setRoomCode] = useState('');
+
+  // Fetch room data
+  useEffect(() => {
+    const fetchRoomData = async () => {
+      if (!id) {
+        setError('Room ID is missing');
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        // Get room data from Supabase
+        const room = await roomService.getRoomById(id);
+        
+        if (!room) {
+          setError('Room not found');
+          setLoading(false);
+          return;
+        }
+        
+        setRoomData(room);
+        setRoomCode(room.id);
+        
+        // Fetch room participants
+        const participants = await roomService.getRoomParticipants(room.id);
+        
+        // Convert participants to members format
+        const membersList: RoomMember[] = participants.map(p => {
+          const isCurrentUser = isAuthenticated && user ? p.user_id === user.id : 
+            p.nickname === nickname;
+          
+          return {
+            id: p.user_id,
+            name: isCurrentUser ? 'You' : p.nickname,
+            isAdmin: room.created_by === p.user_id,
+            is_active: p.is_active,
+            joined_at: p.joined_at,
+            last_seen_at: p.last_seen_at
+          };
+        });
+        
+        setMembers(membersList);
+        
+        // Fetch initial messages
+        const roomMessages = await messageService.getRoomMessages(room.id);
+        
+        // Convert to our UI format and sort
+        if (roomMessages.length > 0) {
+          const userId = isAuthenticated && user ? user.id : 'anonymous';
+          const formattedMessages: MessageType[] = roomMessages
+            .map(m => ({
+              id: m.id,
+              text: m.content,
+              isCurrentUser: m.user_id === userId || m.nickname === nickname,
+              timestamp: new Date(m.sent_at).getTime(),
+              nickname: m.nickname
+            }))
+            .sort((a, b) => a.timestamp - b.timestamp); // Sort by time ascending
+          
+          setMessages(formattedMessages);
+        }
+        
+        // Setup real-time subscription
+        const unsubscribe = messageService.subscribeToNewMessages(room.id, (newMessage) => {
+          // Add new message to state
+          const userId = isAuthenticated && user ? user.id : 'anonymous';
+          const formattedMessage: MessageType = {
+            id: newMessage.id,
+            text: newMessage.content,
+            isCurrentUser: newMessage.user_id === userId || newMessage.nickname === nickname,
+            timestamp: new Date(newMessage.sent_at).getTime(),
+            nickname: newMessage.nickname
+          };
+          
+          setMessages(prev => [...prev, formattedMessage]);
+        });
+        
+        // Store unsubscribe function
+        messageSubscriptionRef.current = unsubscribe;
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching room data:', err);
+        setError('Failed to load room data');
+        setLoading(false);
+      }
+    };
+    
+    fetchRoomData();
+    
+    // Clean up subscription on unmount
+    return () => {
+      if (messageSubscriptionRef.current) {
+        messageSubscriptionRef.current();
+      }
+    };
+  }, [id, isAuthenticated, user, nickname]);
   
   // Icon sizes based on screen width
   const iconSizes = {
@@ -140,42 +251,93 @@ export default function CreatedRoomScreen() {
   };
   
   // Handle sending a new message
-  const handleSend = () => {
-    if (!message.trim()) return;
+  const handleSend = async () => {
+    if (!message.trim() || !roomData) return;
     
-    const newMessage: MessageType = {
-      id: Date.now().toString(),
-      text: message,
-      isCurrentUser: true,
-      timestamp: Date.now(),
-    };
+    const messageText = message.trim();
+    setMessage(''); // Clear input right away for better UX
     
-    setMessages(prev => [...prev, newMessage]);
-    setMessage('');
+    try {
+      // Use user ID if authenticated, or generate a random one for anonymous
+      const userId = isAuthenticated && user ? user.id : `anon_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Send message to Supabase
+      await messageService.sendMessage(
+        roomData.id,
+        userId,
+        nickname,
+        messageText
+      );
+      
+      // Client doesn't need to add message to state as the subscription will handle it
+      // This approach prevents duplicate messages
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // If message sending fails, we can add it to state locally with an error status if needed
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    }
   };
 
-  // Handle room options
-  const handleRoomAction = (action: 'delete' | 'add' | 'kick' | 'leave') => {
+  // Handle room options with Supabase integration
+  const handleRoomAction = async (action: 'delete' | 'add' | 'kick' | 'leave') => {
+    if (!roomData) return;
     setShowOptions(false);
     
     switch (action) {
       case 'leave':
-        // In a real app, you would implement leave group logic here
-        Alert.alert('Leave Group', 'You have left the group.');
-        router.back();
+        try {
+          // Get current user ID
+          const userId = isAuthenticated && user ? user.id : '';
+          
+          if (!userId) {
+            Alert.alert('Error', 'User ID missing');
+            return;
+          }
+          
+          // Update room_participants table to mark user as inactive
+          const success = await roomService.leaveRoom(roomData.id, userId);
+          
+          if (success) {
+            Alert.alert('Left Room', 'You have left the chat room.');
+            router.back();
+          } else {
+            Alert.alert('Error', 'Failed to leave room');
+          }
+        } catch (error) {
+          console.error('Error leaving room:', error);
+          Alert.alert('Error', 'Failed to leave room');
+        }
         break;
+        
       case 'delete':
+        // Only room creator can delete
+        if (!isAuthenticated || !user || roomData.created_by !== user.id) {
+          Alert.alert('Not Authorized', 'Only the room creator can delete this room');
+          return;
+        }
+        
         Alert.alert(
-          'Delete Group',
-          'Are you sure you want to delete this group? This action cannot be undone.',
+          'Delete Room',
+          'Are you sure you want to delete this room? This action cannot be undone.',
           [
             { text: 'Cancel', style: 'cancel' },
             { 
               text: 'Delete', 
               style: 'destructive',
-              onPress: () => {
-                // Handle delete group
-                router.back();
+              onPress: async () => {
+                try {
+                  // Delete room in Supabase
+                  const deleted = await roomService.deleteRoom(roomData.id, user.id);
+                  
+                  if (deleted) {
+                    router.back();
+                  } else {
+                    Alert.alert('Error', 'Failed to delete room');
+                  }
+                } catch (error) {
+                  console.error('Error deleting room:', error);
+                  Alert.alert('Error', 'Failed to delete room');
+                }
               }
             },
           ]
@@ -183,29 +345,43 @@ export default function CreatedRoomScreen() {
         break;
         
       case 'add':
-        // In a real app, you would implement member addition logic here
-        Alert.alert('Add Member', 'Share the room code to add members: ' + roomCode);
+        // Share room code
+        Alert.alert('Add Member', `Share this room code with friends to join: ${roomCode}`);
         break;
         
       case 'kick':
-        // In a real app, you would show a member list to kick
-        const nonAdminMembers = members.filter(m => !m.isAdmin);
+        // Only room creator can kick members
+        if (!isAuthenticated || !user || roomData.created_by !== user.id) {
+          Alert.alert('Not Authorized', 'Only the room creator can remove members');
+          return;
+        }
+        
+        const nonAdminMembers = members.filter(m => !m.isAdmin && m.id !== user.id);
+        
         if (nonAdminMembers.length > 0) {
           Alert.alert(
             'Kick Member',
-            'Select a member to kick',
+            'Select a member to remove',
             [
               ...nonAdminMembers.map(member => ({
                 text: member.name,
-                onPress: () => {
-                  setMembers(prev => prev.filter(m => m.id !== member.id));
+                onPress: async () => {
+                  try {
+                    // In a real implementation, you would have an API call to remove the member
+                    // For now, we'll update the UI only
+                    setMembers(prev => prev.filter(m => m.id !== member.id));
+                    Alert.alert('Member Removed', `${member.name} has been removed from the room`);
+                  } catch (error) {
+                    console.error('Error removing member:', error);
+                    Alert.alert('Error', 'Failed to remove member');
+                  }
                 }
               })),
               { text: 'Cancel', style: 'cancel' }
             ]
           );
         } else {
-          Alert.alert('No members to kick');
+          Alert.alert('No Members', 'There are no members to remove');
         }
         break;
     }
@@ -437,6 +613,46 @@ export default function CreatedRoomScreen() {
     return messageAnimations.current[messageId];
   };
 
+  // Render loading screen while fetching data
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: appTheme.background }} edges={['left', 'right', 'bottom']}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={appTheme.background} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: appTheme.text, fontSize: scaleFont(18), marginBottom: scaleSize(10) }}>Loading room...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  
+  // Render error screen if room couldn't be loaded
+  if (error) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: appTheme.background }} edges={['left', 'right', 'bottom']}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={appTheme.background} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: scaleSize(20) }}>
+          <Text style={{ color: 'red', fontSize: scaleFont(18), marginBottom: scaleSize(10) }}>{error}</Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => ({
+              padding: scaleSize(12),
+              backgroundColor: pressed ? appTheme.border : appTheme.accent,
+              borderRadius: scaleSize(8),
+              marginTop: scaleSize(20),
+            })}
+          >
+            <Text style={{ color: 'white', fontSize: scaleFont(16) }}>Go Back</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  
+  // Get room name and emoji from roomData
+  const roomName = roomData?.name || 'Chat Room';
+  // Fix TypeScript error - emoji property needs to be accessed safely
+  const roomEmoji = (roomData as any)?.emoji || '💬';
+  
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: appTheme.background }} edges={['left', 'right', 'bottom']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={appTheme.background} />
@@ -477,7 +693,7 @@ export default function CreatedRoomScreen() {
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: scaleFont(22), marginRight: scaleSize(8) }}>{emoji}</Text>
+              <Text style={{ fontSize: scaleFont(22), marginRight: scaleSize(8) }}>{roomEmoji}</Text>
               <Text
                 style={{
                   fontSize: scaleFont(18),
@@ -498,7 +714,7 @@ export default function CreatedRoomScreen() {
                 marginTop: scaleSize(2),
               }}
             >
-              Room Code: {roomCode}
+              {members.length} member{members.length !== 1 ? 's' : ''} • Room Code: {roomCode}
             </Text>
           </View>
           <Pressable
@@ -580,6 +796,15 @@ export default function CreatedRoomScreen() {
                           msg.isCurrentUser ? [styles.myMessage, { backgroundColor: appTheme.accent }] : [styles.otherMessage, { backgroundColor: appTheme.card }],
                         ]}
                       >
+                        {/* Display nickname for messages from others */}
+                        {!msg.isCurrentUser && msg.nickname && (
+                          <Text style={[
+                            styles.messageNickname, 
+                            { color: appTheme.secondaryText }
+                          ]}>
+                            {msg.nickname}
+                          </Text>
+                        )}
                         <Text style={[styles.messageText, { color: msg.isCurrentUser ? '#fff' : appTheme.text }]}>{msg.text}</Text>
                         <Text style={[styles.messageTime, { color: msg.isCurrentUser ? '#e0e0e0' : appTheme.secondaryText }]}>{formatTime(msg.timestamp)}</Text>
                       </View>
@@ -751,9 +976,14 @@ const styles = StyleSheet.create({
     lineHeight: scaleFont(20),
   },
   messageTime: {
-    fontSize: scaleFont(10),
-    textAlign: 'right',
+    fontSize: 12,
+    alignSelf: "flex-end",
     marginTop: 4,
+  },
+  messageNickname: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 4,
   },
   // Input area
   inputContainer: {

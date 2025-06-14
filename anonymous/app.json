@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "genzchat",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,14 +15,29 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.rork.gen-z-anonymous-group-chat"
+      "bundleIdentifier": "app.rork.gen-z-anonymous-group-chat",
+      "associatedDomains": ["applinks:iqzodmrmskrpzlwizfha.supabase.co"]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.gen-z-anonymous-group-chat"
+      "package": "app.rork.gen-z-anonymous-group-chat",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "iqzodmrmskrpzlwizfha.supabase.co",
+              "pathPrefix": "/auth/v1/verify"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"

@@ -19,22 +19,31 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
+import { supabase } from '@/lib/supabase';
 
 import { InputField } from '@/components/InputField';
 import { Button } from '../components/Button';
+import { userService } from '@/lib/user-service';
 
 export default function SignupScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeStore();
-  const { signup, isLoading, error, clearError } = useAuthStore();
+  const { 
+    signup, 
+    error: authError, 
+    success: authSuccess,
+    verificationPending, 
+    isLoading: authLoading, 
+    clearError,
+    clearSuccess 
+  } = useAuthStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [secureTextEntry, setSecureTextEntry] = useState(true);
-  const [confirmSecureTextEntry, setConfirmSecureTextEntry] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   
   // Animation on component mount
@@ -44,55 +53,71 @@ export default function SignupScreen() {
       duration: 800,
       useNativeDriver: true,
     }).start();
+    
+    // Reset email sent state and clear any previous states when component mounts
+    setEmailSent(false);
+    clearError();
+    clearSuccess();
+    
+    return () => {
+      clearError();
+      clearSuccess();
+    };
   }, []);
   
-  // Handle error display
+  // Update emailSent state when auth store indicates verification is pending
   useEffect(() => {
-    if (error) {
-      Alert.alert('Signup Error', error, [
-        { text: 'OK', onPress: () => clearError() }
-      ]);
+    if (verificationPending && authSuccess) {
+      setEmailSent(true);
     }
-  }, [error]);
+  }, [verificationPending, authSuccess]);
   
-  const handleSignup = async () => {
-    Keyboard.dismiss();
-    
-    // Form validation
-    if (!username || !email || !password || !confirmPassword) {
-      Alert.alert('Missing Fields', 'Please fill in all fields');
-      return;
-    }
-    
-    if (password !== confirmPassword) {
-      Alert.alert('Password Mismatch', 'Passwords do not match');
-      return;
-    }
-    
-    if (password.length < 6) {
-      Alert.alert('Weak Password', 'Password should be at least 6 characters');
-      return;
-    }
-    
-    // Basic email validation
+  // Validate email format
+  const isValidEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address');
+    return emailRegex.test(email);
+  };
+
+  const handleSignup = async () => {
+    // Validate inputs
+    if (!username.trim()) {
+      setError('Username is required');
       return;
     }
     
-    await signup(username, email, password);
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // First check if username is available
+      const usernameAvailable = await userService.isUsernameAvailable(username);
+      if (!usernameAvailable) {
+        setError('This username is already taken. Please choose another one.');
+        return;
+      }
+
+      // Use the signup method from our auth store
+      // Success state will be handled by the useEffect watching verificationPending
+      await signup(username, email);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create account');
+    } finally {
+      setIsLoading(false);
+    }
   };
   
-  const toggleSecureEntry = () => {
-    setSecureTextEntry(!secureTextEntry);
-  };
-  
-  const toggleConfirmSecureEntry = () => {
-    setConfirmSecureTextEntry(!confirmSecureTextEntry);
-  };
+
   
   const navigateToLogin = () => {
+    // Clear states before navigation
+    clearError();
+    clearSuccess();
+    setEmailSent(false);
     router.push('/login');
   };
   
@@ -141,90 +166,62 @@ export default function SignupScreen() {
           </View>
           
           <View style={[styles.formCard, { backgroundColor: theme.card }]}>
-            <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>Username</Text>
-              <InputField
-                value={username}
-                onChangeText={setUsername}
-                placeholder="Choose a username"
-                autoCapitalize="none"
-                containerStyle={styles.fieldContainer}
-                leftIcon={<Feather name="user" size={20} color={theme.secondaryText} />}
-                placeholderTextColor={theme.secondaryText}
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>Email</Text>
-              <InputField
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Enter your email"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                containerStyle={styles.fieldContainer}
-                leftIcon={<Feather name="mail" size={20} color={theme.secondaryText} />}
-                placeholderTextColor={theme.secondaryText}
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>Password</Text>
-              <InputField
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Create a password"
-                secureTextEntry={secureTextEntry}
-                containerStyle={styles.fieldContainer}
-                leftIcon={<Feather name="lock" size={20} color={theme.secondaryText} />}
-                rightIcon={
-                  <TouchableOpacity 
-                    onPress={toggleSecureEntry}
-                    hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-                  >
-                    <Feather 
-                      name={secureTextEntry ? 'eye' : 'eye-off'} 
-                      size={20} 
-                      color={theme.secondaryText} 
-                    />
-                  </TouchableOpacity>
-                }
-                placeholderTextColor={theme.secondaryText}
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>Confirm Password</Text>
-              <InputField
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Confirm password"
-                secureTextEntry={confirmSecureTextEntry}
-                containerStyle={styles.fieldContainer}
-                leftIcon={<Feather name="lock" size={20} color={theme.secondaryText} />}
-                rightIcon={
-                  <TouchableOpacity 
-                    onPress={toggleConfirmSecureEntry}
-                    hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-                  >
-                    <Feather 
-                      name={confirmSecureTextEntry ? 'eye' : 'eye-off'} 
-                      size={20} 
-                      color={theme.secondaryText} 
-                    />
-                  </TouchableOpacity>
-                }
-                placeholderTextColor={theme.secondaryText}
-              />
-            </View>
-            
-            <Button
-              title="Create Account"
-              onPress={handleSignup}
-              loading={isLoading}
-              style={styles.signupButton}
-              textStyle={{ fontWeight: 'bold', fontSize: RFValue(16) }}
-            />
+            {!emailSent ? (
+              <>
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>Username</Text>
+                  <InputField
+                    value={username}
+                    onChangeText={setUsername}
+                    placeholder="Choose a username"
+                    containerStyle={styles.fieldContainer}
+                    placeholderTextColor={theme.secondaryText}
+                    autoCapitalize="none"
+                  />
+                </View>
+                
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>Email</Text>
+                  <InputField
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="Your email address"
+                    keyboardType="email-address"
+                    containerStyle={styles.fieldContainer}
+                    placeholderTextColor={theme.secondaryText}
+                    autoCapitalize="none"
+                  />
+                </View>
+                
+                <Text style={[styles.infoText, { color: theme.secondaryText }]}>
+                  We'll send a verification email to this address. No password required!
+                </Text>
+                
+                <Button
+                  title="Sign Up"
+                  onPress={handleSignup}
+                  loading={isLoading || authLoading}
+                  style={styles.signupButton}
+                  textStyle={{ fontWeight: 'bold', fontSize: RFValue(16) }}
+                />
+                
+                {(error || authError) && (
+                  <Text style={[styles.errorText, { color: theme.error || '#ff3b30' }]}>
+                    {error || authError}
+                  </Text>
+                )}
+              </>
+            ) : (
+              <View style={styles.successContainer}>
+                <Feather name="mail" size={60} color={theme.accent} />
+                <Text style={[styles.title, { color: theme.text, marginTop: 20 }]}>
+                  Verification Email Sent!
+                </Text>
+                <Text style={[styles.subtitle, { color: theme.secondaryText, textAlign: 'center' }]}>
+                  Please check your email and click the verification link to complete your registration.
+                </Text>
+              </View>
+            )}
             
             <View style={styles.loginContainer}>
               <Text style={[styles.loginText, { color: theme.secondaryText }]}>
@@ -244,8 +241,48 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
+  errorText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 16,
+    color: '#ff3b30',
+  },
   fieldContainer: {
     marginBottom: 0,
+  },
+  infoText: {
+    fontSize: 14,
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  otpContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  otpInput: {
+    width: '100%',
+    marginBottom: 8,
+  },
+  countdownText: {
+    fontSize: 14,
+    marginTop: 12,
+    fontWeight: '600',
+  },
+  resendButton: {
+    marginTop: 12,
+    padding: 8,
+  },
+  resendText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  successContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
   },
   container: {
     flexGrow: 1,

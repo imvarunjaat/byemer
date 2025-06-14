@@ -6,12 +6,14 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { RFValue } from 'react-native-responsive-fontsize';
 import { useRouter } from 'expo-router';
 import { useThemeStore } from '@/store/theme-store';
+import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
 import { useWindowDimensions } from 'react-native';
 
 import { InputField } from '@/components/InputField';
 import { Button } from '../components/Button';
 import { EmojiSelector } from '@/components/EmojiSelector';
+import { roomService } from '@/lib/room-service';
 
 // Responsive, theme-aware styles
 type CreateStylesParams = {
@@ -190,20 +192,55 @@ export default function CreateRoomScreen() {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
   
-  const handleCreateRoom = () => {
+  // Add auth state
+  const { isAuthenticated, user } = useAuthStore();
+  
+  const handleCreateRoom = async () => {
     if (!roomName.trim()) return;
+    
+    // Check if user is authenticated
+    if (!isAuthenticated || !user) {
+      Alert.alert(
+        "Authentication Required",
+        "You need to log in before creating a room.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Go to Login", onPress: () => router.push("/login") }
+        ]
+      );
+      return;
+    }
+    
     setIsCreating(true);
-    setTimeout(() => {
-      setIsCreating(false);
-      // Generate a unique 6-digit code
-      const code = generateRoomCode();
-      setRoomCode(code);
-      // Immediately navigate to the room, passing code, name, and emoji
-      router.push(`/room/${code}?name=${encodeURIComponent(roomName)}&emoji=${encodeURIComponent(selectedEmoji)}`);
+    
+    try {
+      // Generate an access code for the room
+      const accessCode = generateRoomCode();
+      
+      // Create room in Supabase
+      const room = await roomService.createRoom(
+        roomName.trim(),
+        user.id,
+        false, // not private by default
+        accessCode
+      );
+      
+      if (!room) {
+        throw new Error("Failed to create room");
+      }
+      
+      setRoomCode(accessCode);
+      // Navigate to the room
+      router.push(`/room/${room.id}?name=${encodeURIComponent(roomName)}&emoji=${encodeURIComponent(selectedEmoji)}`);
       setRoomName('');
       setSelectedEmoji('💬');
       setShowEmojiSelector(false);
-    }, 1000);
+    } catch (error) {
+      console.error("Error creating room:", error);
+      Alert.alert("Failed to Create Room", "Please try again later.");
+    } finally {
+      setIsCreating(false);
+    }
   };
   
   // Enhanced keyboard handling
