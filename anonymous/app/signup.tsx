@@ -101,11 +101,43 @@ export default function SignupScreen() {
         return;
       }
 
-      // Use the signup method from our auth store
-      // Success state will be handled by the useEffect watching verificationPending
-      await signup(username, email);
+      // Check if email already exists in the auth system
+      const { data: existingUserCheck } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false // This will fail if user doesn't exist
+        }
+      });
+
+      // If we get here and the request didn't fail, the email exists
+      // Redirect user to login with message and email
+      setIsLoading(false);
+      clearError();
+      clearSuccess();
+      setEmailSent(false);
+      router.push({
+        pathname: '/login',
+        params: { 
+          message: 'This email is already registered. Please sign in instead.',
+          email: email
+        }
+      });
+      return;
     } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+      // Error code 400 with message "User doesn't exist" means email is not registered
+      // This is a good case for signup - email doesn't exist
+      if (err.message && err.message.includes("User doesn't exist")) {
+        try {
+          // Use the signup method from our auth store
+          // Success state will be handled by the useEffect watching verificationPending
+          await signup(username, email);
+        } catch (signupErr: any) {
+          setError(signupErr.message || 'Failed to create account');
+        }
+      } else {
+        // Any other error
+        setError(err.message || 'Failed to create account');
+      }
     } finally {
       setIsLoading(false);
     }

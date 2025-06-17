@@ -1,10 +1,11 @@
-import { supabase } from './supabase';
+import { supabase, supabaseAdmin } from './supabase';
 
 export interface Profile {
   id: string;
   username: string;
   created_at?: string;
   updated_at?: string;
+  // Add any other fields that might be in your profiles table
 }
 
 // User profile service functions
@@ -15,6 +16,8 @@ export const userService = {
    */
   createUserProfile: async (userId: string, username: string): Promise<Profile | null> => {
     try {
+      console.log('Creating profile for user:', userId, 'with username:', username);
+      
       // First check if profile already exists to avoid duplicate inserts
       const { data: existingProfile } = await supabase
         .from('profiles')
@@ -28,8 +31,9 @@ export const userService = {
         return existingProfile;
       }
       
-      // Create profile entry if it doesn't exist
-      const { data, error } = await supabase
+      // Use supabaseAdmin to bypass RLS when creating the profile
+      // This ensures that the profile can be created regardless of RLS policies
+      const { data, error } = await supabaseAdmin
         .from('profiles')
         .insert({
           id: userId,

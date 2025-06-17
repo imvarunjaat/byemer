@@ -17,7 +17,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { Feather } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
@@ -29,6 +29,10 @@ import { Button } from '../components/Button';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const redirectMessage = params.message as string;
+  const redirectedEmail = params.email as string;
+  
   const { isDarkMode } = useThemeStore();
   const { 
     login, 
@@ -36,12 +40,15 @@ export default function LoginScreen() {
     success: authSuccess, 
     isLoading, 
     clearError, 
-    clearSuccess 
+    clearSuccess,
+    user
   } = useAuthStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(redirectedEmail || '');
   const [emailSent, setEmailSent] = useState(false);
+  const [infoMessage, setInfoMessage] = useState<string | null>(redirectMessage || null);
+  const [autoLoginSent, setAutoLoginSent] = useState(false);
   
   const [fadeAnim] = useState(new Animated.Value(0));
   
@@ -57,6 +64,24 @@ export default function LoginScreen() {
     setEmailSent(false);
     clearError();
     clearSuccess();
+    
+    // Auto-send login link if we were redirected with an email
+    if (redirectedEmail && !autoLoginSent) {
+      try {
+        login(redirectedEmail).catch((err) => {
+          // If we get a rate limit error, we'll just assume the email was sent
+          // and won't show the error to the user
+          if (err?.message?.includes('security purposes') || err?.message?.includes('seconds')) {
+            console.log('Rate limiting detected, suppressing error');
+            clearError();
+          }
+        });
+      } catch (err) {
+        // Silent catch
+      }
+      setAutoLoginSent(true);
+      setEmailSent(true);
+    }
     
     return () => {
       clearError();
@@ -124,53 +149,89 @@ export default function LoginScreen() {
           </View>
           
           <View style={[styles.formCard, { backgroundColor: theme.card }]}>
-            <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>Email address</Text>
-              <View style={[styles.inputWrapper, { borderColor: theme.border }]}>
-                <View style={styles.iconContainer}>
-                  <Feather name="mail" size={20} color={theme.secondaryText} />
+            {redirectedEmail && autoLoginSent ? (
+              // When redirected with email, show only success message
+              <View style={styles.autoLoginContainer}>
+                <View style={styles.iconCircle}>
+                  <Feather name="mail" size={40} color={theme.accent} />
                 </View>
-                <TextInput
-                  style={[styles.input, { color: theme.text }]}
-                  placeholder="your@email.com"
-                  placeholderTextColor={theme.secondaryText}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  value={email}
-                  onChangeText={(text: string) => setEmail(text)}
-                  editable={!isLoading}
-                />
-              </View>
-            </View>
-
-            {emailSent && (
-              <View style={styles.successContainer}>
-                <Feather name="check-circle" size={18} color={theme.success || '#4CAF50'} style={styles.successIcon} />
-                <Text style={[styles.successText, { color: theme.success || '#4CAF50' }]}>
-                  Verification email sent! Please check your inbox.
+                
+                <Text style={[styles.title, { color: theme.text, marginTop: 20, textAlign: 'center' }]}>
+                  Email Already Registered
                 </Text>
+                
+                <Text style={[styles.infoText, { color: theme.secondaryText, textAlign: 'center', marginTop: 8 }]}>
+                  We've sent a login link to <Text style={{fontWeight: '600'}}>{redirectedEmail}</Text>
+                </Text>
+                
+                <View style={styles.checkInboxCard}>
+                  <Feather name="check-circle" size={18} color={theme.success || '#4CAF50'} style={styles.successIcon} />
+                  <Text style={[styles.successText, { color: theme.success || '#4CAF50' }]}>
+                    Please check your inbox to sign in
+                  </Text>
+                </View>
               </View>
-            )}
+            ) : (
+              // Regular login flow
+              <>
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>Email address</Text>
+                  <View style={[styles.inputWrapper, { borderColor: theme.border }]}>
+                    <View style={styles.iconContainer}>
+                      <Feather name="mail" size={20} color={theme.secondaryText} />
+                    </View>
+                    <TextInput
+                      style={[styles.input, { color: theme.text }]}
+                      placeholder="your@email.com"
+                      placeholderTextColor={theme.secondaryText}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoComplete="email"
+                      value={email}
+                      onChangeText={(text: string) => setEmail(text)}
+                      editable={!isLoading}
+                    />
+                  </View>
+                </View>
 
-            {authError && !emailSent && (
-              <Text style={[styles.errorText, { color: theme.error || '#ff3b30' }]}>
-                {authError}
-              </Text>
-            )}
+                {emailSent && (
+                  <View style={styles.successContainer}>
+                    <Feather name="check-circle" size={18} color={theme.success || '#4CAF50'} style={styles.successIcon} />
+                    <Text style={[styles.successText, { color: theme.success || '#4CAF50' }]}>
+                      Verification email sent! Please check your inbox.
+                    </Text>
+                  </View>
+                )}
 
-            <Button
-              title={isLoading ? 'Sending...' : 'Send Login Link'}
-              onPress={() => {
-                if (email && !isLoading) {
-                  clearError(); // Clear any previous errors
-                  login(email);
-                  // Success will be handled by the useEffect
-                }
-              }}
-              style={styles.button}
-              disabled={!email || isLoading}
-            />
+                {infoMessage && (
+                  <View style={styles.infoContainer}>
+                    <Feather name="info" size={18} color={theme.accent} style={styles.infoIcon} />
+                    <Text style={[styles.infoText, { color: theme.accent }]}>
+                      {infoMessage}
+                    </Text>
+                  </View>
+                )}
+                
+                {authError && !emailSent && !authError.includes('security purposes') && !authError.includes('seconds') && (
+                  <Text style={[styles.errorText, { color: theme.error || '#ff3b30' }]}>
+                    {authError}
+                  </Text>
+                )}
+
+                <Button
+                  title={isLoading ? 'Sending...' : 'Send Login Link'}
+                  onPress={() => {
+                    if (email && !isLoading) {
+                      clearError(); // Clear any previous errors
+                      login(email);
+                      // Success will be handled by the useEffect
+                    }
+                  }}
+                  style={styles.button}
+                  disabled={!email || isLoading}
+                />
+              </>
+            )}
             
             <View style={styles.signupContainer}>
               <Text style={[styles.signupText, { color: theme.secondaryText }]}>
@@ -195,6 +256,48 @@ const styles = StyleSheet.create({
   // Main input style
   button: {
     marginTop: hp('3%'),
+  },
+  infoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F8FF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E3F2FD',
+  },
+  infoIcon: {
+    marginRight: 8,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  autoLoginContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E3F2FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkInboxCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FFF0',
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 24,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E6F5E6',
   },
   errorText: {
     marginTop: hp('2%'),

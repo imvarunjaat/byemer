@@ -188,8 +188,10 @@ export default function CreateRoomScreen() {
   };
   
   function generateRoomCode() {
-    // Generates a 6-digit code as a string, padded with zeros if needed
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    // Generates a 6-digit code as a string, ensuring it's exactly 6 digits
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Pad with leading zeros if needed to ensure 6 digits
+    return code.padStart(6, '0');
   }
   
   // Add auth state

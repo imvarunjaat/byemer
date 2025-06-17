@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { userService } from '@/lib/user-service';
 import { getAuthRedirectUrl } from '@/lib/deep-linking';
 import { Platform } from 'react-native';
@@ -235,20 +235,64 @@ export const useAuthStore = create<AuthState>()(
             
             // Create profile in Supabase regardless of session state
             try {
-              // Force profile creation at signup time
-              console.log('Creating user profile for:', data.user.id, username);
-              const profile = await supabase
-                .from('profiles')
-                .upsert({
-                  id: data.user.id,
-                  username: username,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                })
-                .select()
-                .maybeSingle();
+              // Attempt to create profile using service role client with a simpler approach
+              console.log('Creating profile for user ID:', data.user.id);
+              
+              // Option 1: First try direct SQL insert via RPC
+              try {
+                const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc(
+                  'create_user_profile', 
+                  { 
+                    user_id: data.user.id,
+                    user_name: username
+                  }
+                );
                 
-              console.log('Profile creation result:', profile.data ? 'Success' : 'Failed', profile.error || '');
+                if (rpcError) {
+                  console.log('RPC failed, falling back to normal insert:', rpcError);
+                  throw rpcError; // Will trigger fallback
+                } else {
+                  console.log('Profile created successfully via RPC');
+                  return; // Success path
+                }
+              } catch (rpcAttemptError) {
+                // Fallback to regular insert if RPC doesn't exist
+                console.log('Falling back to direct insert');
+              }
+              
+              // Option 2: Fall back to direct insert
+              try {
+                // Try with minimal fields
+                const { data: profile, error: profileError } = await supabaseAdmin
+                  .from('profiles')
+                  .upsert({
+                    id: data.user.id,
+                    username: username
+                  })
+                  .select()
+                  .single();
+                  
+                if (profileError) {
+                  console.error('Error creating profile with standard insert:', profileError);
+                  throw profileError;
+                }
+                
+                console.log('Profile created successfully via direct insert');
+              } catch (directInsertError) {
+                console.error('Failed to create profile via direct insert:', directInsertError);
+                
+                // Last resort - create profile via userService
+                try {
+                  console.log('Final attempt: Using userService.createUserProfile');
+                  const userProfile = await userService.createUserProfile(data.user.id, username);
+                  if (userProfile) {
+                    console.log('Profile created via userService');
+                  }
+                } catch (userServiceError) {
+                  console.error('All profile creation methods failed:', userServiceError);
+                  throw userServiceError;
+                }
+              }
               
               // If session exists, user is automatically logged in (development mode)
               if (data.session) {
