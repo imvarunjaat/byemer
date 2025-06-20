@@ -5,7 +5,7 @@ import { Profile } from './user-service';
 // Service for managing rooms
 export const roomService = {
   // Create a new room
-  async createRoom(name: string, createdBy: string, isPrivate: boolean = false, accessCode?: string): Promise<Room | null> {
+  async createRoom(name: string, createdBy: string, isPrivate: boolean = false, accessCode?: string, emoji: string = '💬'): Promise<Room | null> {
     try {
       // Create room in Supabase
       const { data, error } = await supabase
@@ -21,24 +21,25 @@ export const roomService = {
 
       if (error) throw error;
       
-      // Store room in local storage for recent rooms list
+      // Add to user's recent rooms in Supabase
       try {
-        const recentRoomsKey = 'recent_rooms';
-        const storedRoomsJSON = await AsyncStorage.getItem(recentRoomsKey);
-        const storedRooms = storedRoomsJSON ? JSON.parse(storedRoomsJSON) : [];
+        const { error: recentRoomError } = await supabase
+          .from('user_recent_rooms')
+          .upsert({
+            user_id: createdBy,
+            room_id: data.id,
+            last_accessed: new Date().toISOString(),
+            emoji: emoji // Use the provided emoji
+          }, {
+            onConflict: 'user_id,room_id',
+            ignoreDuplicates: false
+          });
         
-        // Add emoji to the room data
-        const roomWithExtra = {
-          ...data,
-          emoji: '💬', // Default emoji
-          last_accessed: new Date().toISOString()
-        };
-        
-        // Add to beginning of array (most recent first)
-        const updatedRooms = [roomWithExtra, ...storedRooms.filter((r: Room) => r.id !== data.id)].slice(0, 10); // Keep max 10 rooms
-        await AsyncStorage.setItem(recentRoomsKey, JSON.stringify(updatedRooms));
+        if (recentRoomError) {
+          console.error('Failed to add room to user_recent_rooms:', recentRoomError);
+        }
       } catch (storageError) {
-        console.error('Failed to store room locally:', storageError);
+        console.error('Failed to add room to recent rooms:', storageError);
       }
       
       return data;
@@ -130,28 +131,60 @@ export const roomService = {
     }
   },
   
-  // Get recent rooms from local storage
-  async getRecentRooms(): Promise<any[]> {
+  // Get user's recent rooms from Supabase using separate queries instead of joins
+  async getRecentRooms(userId: string): Promise<any[]> {
     try {
-      const storedRoomsJSON = await AsyncStorage.getItem('recent_rooms');
-      if (storedRoomsJSON) {
-        return JSON.parse(storedRoomsJSON);
+      // First get the user's recent room IDs
+      const { data: recentRoomData, error: recentRoomError } = await supabase
+        .from('user_recent_rooms')
+        .select('id, room_id, last_accessed, emoji, nickname')
+        .eq('user_id', userId)
+        .order('last_accessed', { ascending: false })
+        .limit(10);
+
+      if (recentRoomError) {
+        console.error('Failed to get recent rooms data:', recentRoomError);
+        return [];
       }
-      return [];
+      
+      if (!recentRoomData || recentRoomData.length === 0) {
+        return [];
+      }
+      
+      // Extract room IDs
+      const roomIds = recentRoomData.map(item => item.room_id);
+      
+      // Get the actual room data with a separate query
+      const { data: roomsData, error: roomsError } = await supabase
+        .from('rooms')
+        .select('*')
+        .in('id', roomIds);
+        
+      if (roomsError) {
+        console.error('Failed to get rooms data:', roomsError);
+        return [];
+      }
+      
+      // Combine the data to match the expected format
+      return recentRoomData.map(recentRoom => {
+        const room = roomsData.find(r => r.id === recentRoom.room_id) || null;
+        return {
+          ...recentRoom,
+          rooms: room,  // Keep the original property
+          room: room    // Add the expected property
+        };
+      });
     } catch (error) {
       console.error('Failed to get recent rooms:', error);
       return [];
     }
   },
   
-  // Clear all recent rooms from local storage
-  async clearRecentRooms(): Promise<void> {
-    try {
-      await AsyncStorage.removeItem('recent_rooms');
-    } catch (error) {
-      console.error('Failed to clear recent rooms:', error);
-      throw error;
-    }
+  // Clear recent rooms functionality is disabled as requested
+  async clearRecentRooms(userId: string): Promise<void> {
+    // This functionality has been removed as requested
+    console.log('Clear rooms functionality disabled');
+    return;
   },
 
   // Join a room
@@ -166,14 +199,24 @@ export const roomService = {
         .single();
 
       if (existing) {
-        // Already joined, update is_active to true
+        // Update nickname if provided
+        const updateData: any = { 
+          is_active: true, 
+          last_seen_at: new Date().toISOString() 
+        };
+        
+        if (nickname) {
+          updateData.nickname = nickname;
+        }
+        
+        // Already joined, update is_active to true and possibly nickname
         await supabase
           .from('room_participants')
-          .update({ is_active: true, last_seen_at: new Date().toISOString() })
+          .update(updateData)
           .eq('id', existing.id);
 
-        // Get room details to add to recent rooms
-        this.addRoomToRecents(roomId, nickname);
+        // Add to user's recent rooms
+        this.addRoomToRecents(roomId, userId, nickname);
           
         return existing;
       }
@@ -186,15 +229,16 @@ export const roomService = {
           user_id: userId,
           is_active: true,
           joined_at: new Date().toISOString(),
-          last_seen_at: new Date().toISOString()
+          last_seen_at: new Date().toISOString(),
+          nickname: nickname
         })
         .select()
         .single();
 
       if (error) throw error;
       
-      // Add to recent rooms
-      this.addRoomToRecents(roomId, nickname);
+      // Add to user's recent rooms
+      this.addRoomToRecents(roomId, userId, nickname);
       
       return data;
     } catch (error) {
@@ -203,33 +247,38 @@ export const roomService = {
     }
   },
   
-  // Helper to add a room to recent rooms when joined
-  async addRoomToRecents(roomId: string, nickname?: string): Promise<void> {
+  // Helper to add a room to user's recent rooms when joined
+  async addRoomToRecents(roomId: string, userId: string, nickname?: string, emoji: string = '💬'): Promise<void> {
     try {
-      // Get the room details
-      const { data: room } = await supabase
+      // Check if room exists
+      const { data: room, error: roomError } = await supabase
         .from('rooms')
-        .select('*')
+        .select('id')
         .eq('id', roomId)
         .single();
       
-      if (!room) return;
+      if (roomError || !room) {
+        console.error('Room not found when trying to add to recents:', roomError);
+        return;
+      }
       
-      // Add to recent rooms
-      const recentRoomsKey = 'recent_rooms';
-      const storedRoomsJSON = await AsyncStorage.getItem(recentRoomsKey);
-      const storedRooms = storedRoomsJSON ? JSON.parse(storedRoomsJSON) : [];
+      // Add to user's recent rooms in Supabase
+      const { error } = await supabase
+        .from('user_recent_rooms')
+        .upsert({
+          user_id: userId,
+          room_id: roomId,
+          last_accessed: new Date().toISOString(),
+          emoji: emoji, // Use provided emoji
+          nickname: nickname // Store the nickname used for this room
+        }, {
+          onConflict: 'user_id,room_id',
+          ignoreDuplicates: false
+        });
       
-      const roomWithExtra = {
-        ...room,
-        emoji: '💬', // Default emoji
-        last_accessed: new Date().toISOString(),
-        nickname: nickname // Store the nickname used for this room
-      };
-      
-      // Add to beginning of array (most recent first)
-      const updatedRooms = [roomWithExtra, ...storedRooms.filter((r: Room) => r.id !== room.id)].slice(0, 10); // Keep max 10 rooms
-      await AsyncStorage.setItem(recentRoomsKey, JSON.stringify(updatedRooms));
+      if (error) {
+        console.error('Error updating user_recent_rooms:', error);
+      }
     } catch (error) {
       console.error('Error adding room to recents:', error);
     }
@@ -238,6 +287,7 @@ export const roomService = {
   // Leave a room
   async leaveRoom(roomId: string, userId: string): Promise<boolean> {
     try {
+      // First remove from room_participants
       const { error } = await supabase
         .from('room_participants')
         .delete()
@@ -245,6 +295,24 @@ export const roomService = {
         .eq('user_id', userId);
 
       if (error) throw error;
+      
+      // Also remove from user_recent_rooms to prevent it showing in recent rooms
+      try {
+        const { error: recentRoomError } = await supabase
+          .from('user_recent_rooms')
+          .delete()
+          .eq('room_id', roomId)
+          .eq('user_id', userId);
+          
+        if (recentRoomError) {
+          console.error('Error removing from recent rooms:', recentRoomError);
+          // Continue anyway as the main action succeeded
+        }
+      } catch (recentError) {
+        console.error('Failed to remove room from recent rooms:', recentError);
+        // Continue anyway as the main action succeeded
+      }
+      
       return true;
     } catch (error) {
       console.error('Error leaving room:', error);
@@ -288,6 +356,24 @@ export const roomService = {
         .eq('id', roomId);
 
       if (error) throw error;
+      
+      // Also remove from user_recent_rooms for the user who deleted it
+      try {
+        const { error: recentRoomError } = await supabase
+          .from('user_recent_rooms')
+          .delete()
+          .eq('room_id', roomId)
+          .eq('user_id', userId);
+          
+        if (recentRoomError) {
+          console.error('Error removing deleted room from recent rooms:', recentRoomError);
+          // Continue anyway as the main delete action succeeded
+        }
+      } catch (recentError) {
+        console.error('Failed to remove deleted room from recent rooms:', recentError);
+        // Continue anyway as the main delete action succeeded
+      }
+      
       return true;
     } catch (error) {
       console.error('Error deleting room:', error);
@@ -303,45 +389,17 @@ export const messageService = {
     try {
       console.log('Sending message:', { roomId, userId, nickname, content });
       
-      // Store message locally in AsyncStorage first for offline resilience
-      const messageData = {
-        room_id: roomId,
-        user_id: userId,
-        content,
-        sent_at: new Date().toISOString(),
-        created_at: new Date().toISOString(), // Add created_at for consistency
-        nickname // Store nickname as part of the message
-      };
+      // Update this room as recently accessed
+      roomService.addRoomToRecents(roomId, userId, nickname);
       
-      console.log('Local message data:', messageData);
-      
-      // First try to store locally - use consistent key name
-      try {
-        const localStorageKey = `messages_${roomId}`;
-        const storedMessagesJSON = await AsyncStorage.getItem(localStorageKey);
-        const storedMessages = storedMessagesJSON ? JSON.parse(storedMessagesJSON) : [];
-        storedMessages.push(messageData);
-        await AsyncStorage.setItem(localStorageKey, JSON.stringify(storedMessages));
-        console.log('Saved to AsyncStorage:', { localStorageKey, messageCount: storedMessages.length });
-      } catch (storageError) {
-        console.error('Failed to store message locally:', storageError);
-      }
-      
-      // Then send to Supabase
-      console.log('Sending to Supabase:', {
-        room_id: roomId,
-        user_id: userId,
-        content,
-      });
-      
+      // Send to Supabase with nickname included
       const { data, error } = await supabase
         .from('messages')
         .insert({
           room_id: roomId,
           user_id: userId,
-          content
-          // No need to include created_at - Supabase handles this with a default value
-          // Don't include nickname field or sent_at if they're not in the database schema
+          content,
+          nickname // Store nickname with the message in Supabase
         })
         .select()
         .single();
@@ -353,13 +411,24 @@ export const messageService = {
       
       console.log('Message successfully saved to Supabase:', data);
       
-      // Add nickname to the returned data manually since Supabase doesn't store it
-      const dataWithNickname = {
-        ...data,
-        nickname
-      };
+      // For offline resilience, store in AsyncStorage as well
+      try {
+        const localStorageKey = `messages_${roomId}`;
+        const storedMessagesJSON = await AsyncStorage.getItem(localStorageKey);
+        const storedMessages = storedMessagesJSON ? JSON.parse(storedMessagesJSON) : [];
+        storedMessages.push({
+          ...data,
+          nickname,
+          sent_at: new Date().toISOString()
+        });
+        await AsyncStorage.setItem(localStorageKey, JSON.stringify(storedMessages));
+        console.log('Message backup saved to AsyncStorage');
+      } catch (storageError) {
+        console.error('Failed to store message backup locally:', storageError);
+        // Continue anyway since the message is already in Supabase
+      }
       
-      return dataWithNickname;
+      return data;
     } catch (error) {
       console.error('Error sending message:', error);
       return null;

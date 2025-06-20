@@ -146,6 +146,7 @@ export default function CreatedRoomScreen() {
   // Room details with defaults
   const { id } = params;
   const [roomCode, setRoomCode] = useState('');
+  const [roomEmoji, setRoomEmoji] = useState(params.emoji || '💬');
 
   // Fetch room data
   useEffect(() => {
@@ -167,7 +168,26 @@ export default function CreatedRoomScreen() {
         }
         
         setRoomData(room);
-        setRoomCode(room.id);
+        // Use the 6-digit access_code instead of room.id for display
+        setRoomCode(room.access_code || generateRoomCode());
+        
+        // Try to get the emoji from user_recent_rooms if not provided in params
+        if (!params.emoji) {
+          try {
+            const { data: recentRoomData } = await supabase
+              .from('user_recent_rooms')
+              .select('emoji')
+              .eq('room_id', room.id)
+              .eq('user_id', user?.id || '')
+              .single();
+            
+            if (recentRoomData?.emoji) {
+              setRoomEmoji(recentRoomData.emoji);
+            }
+          } catch (emojiError) {
+            console.error('Error fetching room emoji:', emojiError);
+          }
+        }
         
         // Fetch room participants
         const participants = await roomService.getRoomParticipants(room.id);
@@ -197,10 +217,10 @@ export default function CreatedRoomScreen() {
           const userId = isAuthenticated && user ? user.id : 'anonymous';
           const formattedMessages: MessageType[] = roomMessages
             .map(m => ({
-              id: m.id,
+              id: m.id || `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
               text: m.content,
               isCurrentUser: m.user_id === userId || m.nickname === nickname,
-              timestamp: new Date(m.sent_at).getTime(),
+              timestamp: new Date(m.created_at || m.sent_at || Date.now()).getTime(),
               nickname: m.nickname
             }))
             .sort((a, b) => a.timestamp - b.timestamp); // Sort by time ascending
@@ -213,14 +233,25 @@ export default function CreatedRoomScreen() {
           // Add new message to state
           const userId = isAuthenticated && user ? user.id : 'anonymous';
           const formattedMessage: MessageType = {
-            id: newMessage.id,
+            id: newMessage.id || `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
             text: newMessage.content,
             isCurrentUser: newMessage.user_id === userId || newMessage.nickname === nickname,
-            timestamp: new Date(newMessage.sent_at).getTime(),
+            timestamp: new Date(newMessage.created_at || newMessage.sent_at || Date.now()).getTime(),
             nickname: newMessage.nickname
           };
           
-          setMessages(prev => [...prev, formattedMessage]);
+          // Check if this message already exists to avoid duplicates
+          const isDuplicate = messages.some(m => 
+            (m.id === formattedMessage.id) || 
+            (m.text === formattedMessage.text && 
+             Math.abs(m.timestamp - formattedMessage.timestamp) < 5000 && // Within 5 seconds
+             m.isCurrentUser === formattedMessage.isCurrentUser)
+          );
+          
+          if (!isDuplicate) {
+            console.log('Adding new message:', formattedMessage);
+            setMessages(prev => [...prev, formattedMessage]);
+          }
         });
         
         // Store unsubscribe function
@@ -261,7 +292,19 @@ export default function CreatedRoomScreen() {
       // Use user ID if authenticated, or generate a random one for anonymous
       const userId = isAuthenticated && user ? user.id : `anon_${Math.random().toString(36).substring(2, 9)}`;
       
-      // Send message to Supabase
+      // For immediate feedback, add the message to state first
+      const tempId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const localMessage: MessageType = {
+        id: tempId,
+        text: messageText,
+        isCurrentUser: true,
+        timestamp: Date.now(),
+        nickname: nickname
+      };
+      
+      setMessages(prev => [...prev, localMessage]);
+      
+      // Then send to Supabase in the background
       await messageService.sendMessage(
         roomData.id,
         userId,
@@ -269,11 +312,10 @@ export default function CreatedRoomScreen() {
         messageText
       );
       
-      // Client doesn't need to add message to state as the subscription will handle it
-      // This approach prevents duplicate messages
+      // The subscription will handle receiving the message from the server
+      // There may be a duplicate which our duplicate detection will handle
     } catch (error) {
       console.error('Error sending message:', error);
-      // If message sending fails, we can add it to state locally with an error status if needed
       Alert.alert('Error', 'Failed to send message. Please try again.');
     }
   };
@@ -293,16 +335,33 @@ export default function CreatedRoomScreen() {
             Alert.alert('Error', 'User ID missing');
             return;
           }
-          
-          // Update room_participants table to mark user as inactive
-          const success = await roomService.leaveRoom(roomData.id, userId);
-          
-          if (success) {
-            Alert.alert('Left Room', 'You have left the chat room.');
-            router.back();
-          } else {
-            Alert.alert('Error', 'Failed to leave room');
-          }
+
+          Alert.alert(
+            'Leave Room',
+            'Are you sure you want to leave this room?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Leave', 
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    // Update room_participants table to mark user as inactive
+                    const success = await roomService.leaveRoom(roomData.id, userId);
+                    
+                    if (success) {
+                      router.replace('/(tabs)');
+                    } else {
+                      Alert.alert('Error', 'Failed to leave room');
+                    }
+                  } catch (error) {
+                    console.error('Error leaving room:', error);
+                    Alert.alert('Error', 'Failed to leave room');
+                  }
+                }
+              },
+            ]
+          );
         } catch (error) {
           console.error('Error leaving room:', error);
           Alert.alert('Error', 'Failed to leave room');
@@ -330,7 +389,7 @@ export default function CreatedRoomScreen() {
                   const deleted = await roomService.deleteRoom(roomData.id, user.id);
                   
                   if (deleted) {
-                    router.back();
+                    router.replace('/(tabs)');
                   } else {
                     Alert.alert('Error', 'Failed to delete room');
                   }
@@ -648,14 +707,16 @@ export default function CreatedRoomScreen() {
     );
   }
   
-  // Get room name and emoji from roomData
+  // Get room name from roomData
   const roomName = roomData?.name || 'Chat Room';
-  // Fix TypeScript error - emoji property needs to be accessed safely
-  const roomEmoji = (roomData as any)?.emoji || '💬';
   
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: appTheme.background }} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: appTheme.background }]} edges={['left', 'right', 'bottom']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={appTheme.background} />
+      {/* Display room emoji */}
+      <View style={[styles.emojiFloatContainer, { backgroundColor: isDarkMode ? 'rgba(60,16,83,1)' : '#ede7ff' }]}>
+        <Text style={styles.emojiFloatText}>{roomEmoji}</Text>
+      </View>
       {/* Header */}
       <View
         style={{
@@ -888,7 +949,8 @@ export default function CreatedRoomScreen() {
           <View style={{ flex: 1, backgroundColor: '#00000055' }} />
         </TouchableWithoutFeedback>
         <View style={{ backgroundColor: appTheme.card, borderTopLeftRadius: scaleSize(24), borderTopRightRadius: scaleSize(24), paddingBottom: insets.bottom || scaleSize(24) }}>
-          {members[0]?.isAdmin ? (
+          {/* Check if current user is admin by checking if room was created by them */}
+          {roomData && ((isAuthenticated && user && roomData.created_by === user.id) || (!isAuthenticated && roomData.created_by.includes('anon'))) ? (
             <>
               <OptionItem
                 icon="user-plus"
@@ -935,6 +997,26 @@ const styles = StyleSheet.create({
   // Layout
   container: {
     flex: 1,
+  },
+  emojiFloatContainer: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    zIndex: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  emojiFloatText: {
+    fontSize: 32,
+    textAlign: 'center',
+    opacity: 0.85,
   },
   content: {
     flex: 1,
