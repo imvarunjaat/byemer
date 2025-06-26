@@ -66,44 +66,145 @@ const isAuthLink = (url: string): boolean => {
 const handleAuthLink = async (url: string) => {
   try {
     console.log('Processing auth link:', url);
+    console.log('Platform:', Platform.OS);
     
-    // For Supabase auth links, we need to manually process the URL
-    // and then check the session
-    if (url.includes('#access_token=') || url.includes('?access_token=')) {
-      // This is a full OAuth or magic link response with tokens in the URL
-      const { data, error } = await supabase.auth.setSession({
-        access_token: extractTokenFromUrl(url, 'access_token'),
-        refresh_token: extractTokenFromUrl(url, 'refresh_token')
-      });
-      
-      console.log('Set session result:', data ? 'Success' : 'Failed', error ? error.message : '');
-    } else {
-      // For verification links or other auth links, just route to the callback
-      console.log('Routing to auth callback screen');
-      router.push('/auth/callback' as any);
-      return;
+    // Extract code if present
+    const hasAuthCode = url.includes('code=');
+    let code = null;
+    
+    if (hasAuthCode) {
+      // Extract the code parameter from the URL
+      const codeMatch = url.match(/code=([^&]+)/);
+      if (codeMatch && codeMatch[1]) {
+        code = codeMatch[1];
+        console.log('Auth code extracted from URL, attempting to exchange for session');
+      }
     }
     
-    // After processing, check if we have a session
-    setTimeout(async () => {
-      const { data, error } = await supabase.auth.getSession();
+    // Exchange code for session if present
+    if (code) {
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          console.error('Error exchanging code for session:', error);
+          throw error;
+        }
+        
+        if (data?.session) {
+          console.log('Successfully exchanged code for session');
+          
+          // Import auth store to refresh user profile
+          const { useAuthStore } = require('@/store/auth-store');
+          const { checkSession } = useAuthStore.getState();
+          
+          // Force a session check to refresh the profile data
+          console.log('Refreshing user profile after authentication...');
+          await checkSession();
+          
+          // Navigate home after profile refresh
+          router.replace('/');
+          return;
+        }
+      } catch (exchangeError) {
+        console.error('Failed to exchange code:', exchangeError);
+      }
+    }
+    
+    // Try multiple auth strategies in sequence
+    
+    // Strategy 1: Direct token extraction from URL (OAuth or magic link with tokens)
+    if (url.includes('#access_token=') || url.includes('?access_token=')) {
+      // Extract tokens from the URL
+      const accessToken = extractTokenFromUrl(url, 'access_token');
+      const refreshToken = extractTokenFromUrl(url, 'refresh_token');
       
-      if (error) {
-        console.error('Auth session error:', error);
-        router.push(('/auth/callback?error=' + encodeURIComponent(error.message)) as any);
+      console.log('Tokens extracted - Access token exists:', !!accessToken, 'Refresh token exists:', !!refreshToken);
+      
+      if (accessToken && refreshToken) {
+        try {
+          // Try setting the session with extracted tokens
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          
+          if (error) {
+            console.error('Error setting session with tokens:', error);
+            throw error;
+          }
+          
+          // Immediately verify session was set
+          const { data: verifyData } = await supabase.auth.getSession();
+          if (verifyData?.session) {
+            console.log('Session successfully established with tokens');
+            router.replace('/');
+            return;
+          }
+        } catch (tokenError) {
+          console.error('Token processing error:', tokenError);
+          // Continue to next strategy
+        }
+      }
+    }
+    
+    // Strategy 2: Code exchange (for verification links with code parameter)
+    if (url.includes('code=')) {
+      try {
+        const codeParam = extractTokenFromUrl(url, 'code');
+        if (codeParam) {
+          console.log('Found code parameter, attempting exchange');
+          const { data, error } = await supabase.auth.exchangeCodeForSession(codeParam);
+          
+          if (error) {
+            console.error('Error exchanging code for session:', error);
+            throw error;
+          }
+          
+          if (data?.session) {
+            console.log('Session established via code exchange');
+            router.replace('/');
+            return;
+          }
+        }
+      } catch (codeError) {
+        console.error('Code exchange error:', codeError);
+        // Continue to next strategy
+      }
+    }
+    
+    // Strategy 3: Session refresh (if we already have a session that needs refreshing)
+    try {
+      console.log('Attempting session refresh');
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      
+      if (refreshData?.session) {
+        console.log('Session refreshed successfully');
+        router.replace('/');
         return;
       }
+    } catch (refreshError) {
+      console.error('Session refresh error:', refreshError);
+      // Continue to next strategy
+    }
+    
+    // Strategy 4: Direct session check (if session exists but wasn't detected)
+    try {
+      console.log('Checking for existing session');
+      const { data: sessionData } = await supabase.auth.getSession();
       
-      if (data && data.session) {
-        console.log('Successfully authenticated via deep link');
-        // Navigate to home screen or landing page
+      if (sessionData?.session) {
+        console.log('Existing session found');
         router.replace('/');
-      } else {
-        // No session found, route to login
-        console.log('No session found after auth link');
-        router.push('/auth/callback?error=No%20session%20found' as any);
+        return;
       }
-    }, 1000); // Increased timeout for better reliability
+    } catch (sessionError) {
+      console.error('Session check error:', sessionError);
+    }
+    
+    // If all strategies fail, route to the callback screen for further handling
+    console.log('All direct auth strategies failed, routing to callback screen');
+    router.push('/auth/callback' as any);
+
     
   } catch (error: any) {
     console.error('Error processing auth link:', error);
@@ -114,7 +215,7 @@ const handleAuthLink = async (url: string) => {
 /**
  * Extract token from Supabase auth URL
  */
-const extractTokenFromUrl = (url: string, paramName: string): string => {
+const extractTokenFromUrl = (url: string, paramName: string): string | null => {
   // Extract a token from either hash fragment or query parameters
   const tokenParam = paramName + '=';
   
@@ -133,7 +234,7 @@ const extractTokenFromUrl = (url: string, paramName: string): string => {
       if (startIndex !== -1) {
         startIndex += tokenParam.length + 1; // +1 for the '&'
       } else {
-        return '';
+        return null;
       }
     }
   }
@@ -146,21 +247,6 @@ const extractTokenFromUrl = (url: string, paramName: string): string => {
   } else {
     return url.substring(startIndex);
   }
-  const typeParam = 'type=';
-  
-  // Try to find token in URL
-  if (url.includes(tokenParam)) {
-    const tokenStart = url.indexOf(tokenParam) + tokenParam.length;
-    const tokenEnd = url.indexOf('&', tokenStart);
-    
-    if (tokenEnd > tokenStart) {
-      return url.substring(tokenStart, tokenEnd);
-    } else {
-      return url.substring(tokenStart);
-    }
-  }
-  
-  return '';
 };
 
 /**
@@ -182,6 +268,13 @@ export const getAuthRedirectUrl = (): string => {
     return `${window.location.origin}/auth/callback`;
   }
   
-  // For mobile, use app scheme
-  return getAppDeepLink('auth/callback');
+  // For mobile, use app scheme - this MUST match what you've configured in app.json
+  // Using the format that directly works with Supabase's auth flow
+  const scheme = 'genzchat';
+  
+  // Ensure the format is exactly as Supabase expects for deep linking
+  // The format must be: yourscheme://path/to/callback - do NOT add any additional parameters
+  const callbackUrl = `${scheme}://auth/callback`;
+  console.log('Mobile redirect URL:', callbackUrl);
+  return callbackUrl;
 };
