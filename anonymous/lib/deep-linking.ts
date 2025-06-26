@@ -102,8 +102,7 @@ const handleAuthLink = async (url: string) => {
           await checkSession();
           
           // Navigate home after profile refresh
-          router.replace('/');
-          return;
+
         }
       } catch (exchangeError) {
         console.error('Failed to exchange code:', exchangeError);
@@ -137,8 +136,7 @@ const handleAuthLink = async (url: string) => {
           const { data: verifyData } = await supabase.auth.getSession();
           if (verifyData?.session) {
             console.log('Session successfully established with tokens');
-            router.replace('/');
-            return;
+
           }
         } catch (tokenError) {
           console.error('Token processing error:', tokenError);
@@ -162,8 +160,7 @@ const handleAuthLink = async (url: string) => {
           
           if (data?.session) {
             console.log('Session established via code exchange');
-            router.replace('/');
-            return;
+
           }
         }
       } catch (codeError) {
@@ -179,8 +176,7 @@ const handleAuthLink = async (url: string) => {
       
       if (refreshData?.session) {
         console.log('Session refreshed successfully');
-        router.replace('/');
-        return;
+
       }
     } catch (refreshError) {
       console.error('Session refresh error:', refreshError);
@@ -194,8 +190,7 @@ const handleAuthLink = async (url: string) => {
       
       if (sessionData?.session) {
         console.log('Existing session found');
-        router.replace('/');
-        return;
+
       }
     } catch (sessionError) {
       console.error('Session check error:', sessionError);

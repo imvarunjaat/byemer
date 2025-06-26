@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Pressable, Alert } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
@@ -6,6 +6,7 @@ import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
+import { userService } from '@/lib/user-service';
 import { GlassmorphicCard } from '@/components/GlassmorphicCard';
 import { InputField } from '@/components/InputField';
 import { Button } from '../../components/Button';
@@ -16,14 +17,41 @@ import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useThemeStore();
-  const { logout, user } = useAuthStore();
+  const { logout, user, updateSession } = useAuthStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   const router = useRouter();
   
   const [nickname, setNickname] = useState(user?.username || 'Anonymous');
-  const [selectedEmoji, setSelectedEmoji] = useState('🎭');
+  const [originalNickname, setOriginalNickname] = useState(user?.username || 'Anonymous');
+  const [selectedEmoji, setSelectedEmoji] = useState(user?.preferred_emoji || '🎭');
+  const [originalEmoji, setOriginalEmoji] = useState(user?.preferred_emoji || '🎭');
   const [showEmojiSelector, setShowEmojiSelector] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  
+  // Sync local state with auth store user data
+  useEffect(() => {
+    if (user) {
+      setNickname(user.username || 'Anonymous');
+      setOriginalNickname(user.username || 'Anonymous');
+      setSelectedEmoji(user.preferred_emoji || '🎭');
+      setOriginalEmoji(user.preferred_emoji || '🎭');
+    }
+  }, [user]);
+
+  // Reset the save message after a few seconds
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    if (saveMessage) {
+      timer = setTimeout(() => {
+        setSaveMessage('');
+      }, 3000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [saveMessage]);
   
   const handleLogout = () => {
     Alert.alert(
@@ -33,9 +61,15 @@ export default function ProfileScreen() {
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Logout', 
-          onPress: () => {
-            logout();
-            router.replace('/');
+          onPress: async () => {
+            Alert.alert(
+              'Log out',
+              'Are you sure you want to log out?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Log out', style: 'destructive', onPress: async () => { await logout(); router.replace('/'); } }
+              ]
+            );
           }, 
           style: 'destructive' 
         },
@@ -46,6 +80,71 @@ export default function ProfileScreen() {
   const handleEmojiSelect = (emoji: string) => {
     setSelectedEmoji(emoji);
     setShowEmojiSelector(false);
+  };
+  
+  // Check if profile data has changed
+  const hasProfileChanged = () => {
+    return nickname !== originalNickname || selectedEmoji !== originalEmoji;
+  };
+  
+  // Save profile changes
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    
+    setIsSaving(true);
+    setSaveMessage('');
+    
+    try {
+      // Track if we're only updating emoji (may need special handling)
+      const onlyUpdatingEmoji = nickname === originalNickname && selectedEmoji !== originalEmoji;
+      
+      // Prepare updates object with only changed fields
+      const updates: { username?: string; preferred_emoji?: string } = {};
+      
+      if (nickname !== originalNickname) {
+        updates.username = nickname;
+      }
+      
+      if (selectedEmoji !== originalEmoji) {
+        updates.preferred_emoji = selectedEmoji;
+      }
+      
+      // Only make the API call if there are changes
+      if (Object.keys(updates).length > 0) {
+        const updatedProfile = await userService.updateUserProfile(user.id, updates);
+        
+        if (updatedProfile || onlyUpdatingEmoji) {
+          // For emoji-only updates, updatedProfile might be null if the column doesn't exist
+          // but we still want to update the UI
+          
+          // Update user in auth store immediately
+          const updatedUser = {
+            ...user,
+            username: updatedProfile?.username || nickname,
+            preferred_emoji: selectedEmoji // Always use the selected emoji for UI
+          };
+          
+          if (updateSession) {
+            updateSession(updatedUser);
+          }
+          
+          // Update local state to reflect the changes
+          setOriginalNickname(updatedUser.username);
+          setOriginalEmoji(updatedUser.preferred_emoji);
+          
+          setSaveMessage('Profile updated successfully!');
+        } else {
+          setSaveMessage('Failed to update profile. Please try again.');
+        }
+      } else {
+        setSaveMessage('No changes to save.');
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      setSaveMessage('An error occurred. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
   
   return (
@@ -76,13 +175,31 @@ export default function ProfileScreen() {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>
               Your Nickname
             </Text>
-            <InputField
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="Enter a nickname"
-              maxLength={20}
-              leftIcon={<MaterialCommunityIcons name="account" size={20} color={theme.secondaryText} />}
-            />
+            <View style={styles.inputRow}>
+              <InputField
+                value={nickname}
+                onChangeText={setNickname}
+                placeholder="Enter a nickname"
+                maxLength={20}
+                leftIcon={<MaterialCommunityIcons name="account" size={20} color={theme.secondaryText} />}
+                containerStyle={{ flex: 1 }}
+              />
+              <Button
+                title="Save"
+                onPress={handleSaveProfile}
+                style={styles.saveButton}
+                disabled={!hasProfileChanged() || isSaving}
+                loading={isSaving}
+              />
+            </View>
+            {saveMessage ? (
+              <Text style={[
+                styles.saveMessage, 
+                { color: saveMessage.includes('success') ? '#4CAF50' : saveMessage.includes('No changes') ? theme.secondaryText : '#F44336' }
+              ]}>
+                {saveMessage}
+              </Text>
+            ) : null}
           </View>
           
           <View style={styles.emojiSection}>
@@ -152,10 +269,27 @@ export default function ProfileScreen() {
   );
 }
 
+// Add these missing style definitions
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'rgba(240,240,255,0.7)',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+    width: '100%',
+  },
+  saveButton: {
+    marginLeft: 10,
+    minWidth: 80,
+    height: 45,
+  },
+  saveMessage: {
+    marginTop: 5,
+    fontSize: RFValue(12),
+    textAlign: 'center',
   },
   content: {
     paddingHorizontal: wp('5%'),

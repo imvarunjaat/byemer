@@ -4,206 +4,260 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { userService } from '@/lib/user-service';
 import { getAuthRedirectUrl } from '@/lib/deep-linking';
-import { Platform } from 'react-native';
-import { Session } from '@supabase/supabase-js';
 
-// Set up Supabase auth state change listener
-supabase.auth.onAuthStateChange((event, session) => {
-  console.log(`Supabase auth event: ${event}`, session ? `User: ${session.user.email}` : 'No session');
-  
-  // Update our auth store when Supabase auth state changes
-  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-    if (session) {
-      // Get the auth store and update it
-      const { handleSession } = useAuthStore.getState();
-      handleSession(session);
-    }
-  } else if (event === 'SIGNED_OUT') {
-    // Clear auth state when user signs out
-    const { logout } = useAuthStore.getState();
-    logout();
-  }
-});
-
-interface User {
+// Define the user type
+export interface User {
   id: string;
   username: string;
   email: string;
+  preferred_emoji?: string;
 }
 
-interface AuthState {
+// Define the auth state
+export interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   user: User | null;
   error: string | null;
   success: string | null;
   verificationPending: boolean;
+  
+  // Internal state tracking
+  _lastEmailSentTimestamp: number; // Tracks when the last auth email was sent for rate limiting
+  
+  // Methods
   login: (email: string) => Promise<void>;
   signup: (username: string, email: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
   clearSuccess: () => void;
   checkSession: () => Promise<void>;
-  handleSession: (session?: Session | null) => Promise<void>;
+  handleSession: (session?: any) => Promise<void>;
+  updateSession: (updatedUser: User) => void;
+  setUser: (user: User) => void;
 }
 
 // Supabase authentication implementation
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
+      isLoading: false,
       isAuthenticated: false,
       user: null,
-      isLoading: false,
       error: null,
       success: null,
       verificationPending: false,
-      
-      // Set user manually (needed for OTP flow)
+      _lastEmailSentTimestamp: 0,
+
       setUser: (user: User) => {
-        set({ user, isAuthenticated: true, error: null });
+        set({ user });
       },
 
       checkSession: async () => {
-        set({ isLoading: true });
         try {
-          console.log('Checking for existing session...');
-          // Check for existing session
-          const { data: { session }, error } = await supabase.auth.getSession();
+          set({ isLoading: true });
           
-          if (error) {
-            console.error('Session check error:', error);
-            set({ isLoading: false, isAuthenticated: false });
-            return;
-          }
+          const { data: { session } } = await supabase.auth.getSession();
           
-          console.log('Session check result:', session ? `User: ${session.user.email}` : 'No session');
-          
-          if (session?.user) {
-            // Fetch user profile from profiles table
-            const { data: profile, error: profileError } = await supabase
-              .from('profiles')
-              .select('username')
-              .eq('id', session.user.id)
-              .single();
-              
-            if (profileError) throw profileError;
-            
-            set({ 
-              isAuthenticated: true, 
-              user: { 
-                id: session.user.id,
-                email: session.user.email!,
-                username: profile?.username || session.user.email!.split('@')[0] 
-              },
-              isLoading: false
-            });
+          if (session) {
+            await get().handleSession(session);
           } else {
-            set({ isLoading: false });
+            set({ 
+              isLoading: false, 
+              isAuthenticated: false,
+              user: null
+            });
           }
         } catch (error) {
-          console.error('Session check error:', error);
-          set({ isLoading: false });
+          console.error('Error checking session:', error);
+          set({ 
+            isLoading: false, 
+            isAuthenticated: false,
+            user: null,
+            error: 'Failed to check authentication status.'
+          });
         }
       },
 
+      // Rate limiting is handled via the _lastEmailSentTimestamp property defined in the state
+      
       login: async (email: string) => {
         set({ isLoading: true, error: null, success: null });
+        console.log('Attempting to login with email:', email);
+        
+        // Client-side rate limiting to prevent 429 errors
+        const now = Date.now();
+        const lastSent = get()._lastEmailSentTimestamp;
+        const timeSinceLastSend = now - lastSent;
+        const minimumInterval = 60 * 1000; // 60 seconds minimum between requests
+        
+        if (lastSent > 0 && timeSinceLastSend < minimumInterval) {
+          const remainingSeconds = Math.ceil((minimumInterval - timeSinceLastSend) / 1000);
+          console.log(`Rate limiting prevention: Need to wait ${remainingSeconds} more seconds`);
+          
+          set({
+            isLoading: false,
+            error: `Please wait ${remainingSeconds} seconds before requesting another login link.`,
+            verificationPending: false
+          });
+          return;
+        }
+        
+        // Get the exact URL to use for redirection
+        const redirectUrl = getAuthRedirectUrl();
+        console.log('Login redirect URL:', redirectUrl);
         
         try {
-          // Send magic link to the provided email
+          // First check if connection to Supabase is working
+          const { data: sessionData } = await supabase.auth.getSession();
+          console.log('Current session state:', sessionData ? 'Has session data' : 'No session data');
+          
+          // Continue with login
           const { data, error } = await supabase.auth.signInWithOtp({
             email,
             options: {
-              emailRedirectTo: getAuthRedirectUrl()
+              emailRedirectTo: redirectUrl,
+              shouldCreateUser: true // Ensure user is created if doesn't exist
             }
           });
           
+          console.log('OTP request sent to:', email, 'with redirect:', redirectUrl);
+          
+          // Update last sent timestamp if request was successful
+          set({ _lastEmailSentTimestamp: Date.now() });
+          
+          console.log('SignInWithOTP response:', data ? 'Data received' : 'No data', error ? 'Error occurred' : 'No error');
+          
           if (error) throw error;
           
-          // Since this is a passwordless flow, we won't have a user object yet
-          // Just indicate the email was sent successfully
           set({ 
             isLoading: false,
-            success: `Verification email sent to ${email}. Please check your inbox.`,
+            success: "Magic link sent! Check your email to complete login.",
             verificationPending: true
           });
         } catch (error: any) {
           console.error('Login error:', error);
-          set({ 
-            isLoading: false, 
-            error: error.message || 'Failed to send verification email. Please try again.' 
-          });
+          // More detailed error logging
+          if (error.message) console.error('Error message:', error.message);
+          if (error.status) console.error('Error status:', error.status);
+          
+          // Handle rate limiting errors gracefully
+          if (error.status === 429 || (error.message && error.message.includes('security purposes'))) {
+            // Extract wait time if available
+            const waitTimeMatch = error.message.match(/after (\d+) seconds/);
+            const waitTime = waitTimeMatch ? parseInt(waitTimeMatch[1], 10) : 60;
+            
+            set({
+              isLoading: false,
+              error: `Please wait ${waitTime} seconds before requesting another login link.`,
+              verificationPending: false
+            });
+            
+            // Still update the timestamp to prevent further requests
+            set({ _lastEmailSentTimestamp: Date.now() });
+          } else {
+            // Handle other errors
+            set({ 
+              isLoading: false, 
+              error: error.message || 'Login failed. Please try again.'
+            });
+          }
         }
       },
 
       handleSession: async (session?: any) => {
-        set({ isLoading: true, error: null, verificationPending: false });
-        
-        try {
-          // Use provided session or get current session
-          let sessionData: any = session;
-          
-          if (!sessionData) {
-            const { data, error } = await supabase.auth.getSession();
-            if (error) throw error;
-            sessionData = data?.session;
-          }
-          
-          // Log the session for debugging
-          console.log('handleSession called with valid session:', sessionData ? 'yes' : 'no');
-          
-          if (sessionData) {
-            const user = sessionData.user;
-            // User is logged in, get their profile
-            let username = ''; // Default empty username
-            
-            // Try to fetch user profile from database
-            const { data: profile, error: profileError } = await supabase
-              .from('profiles')
-              .select('username')
-              .eq('id', user.id)
-              .single();
-              
-            // If profile doesn't exist, create it now that we're authenticated
-            if (profileError && profileError.code === 'PGRST116') {
-              // Profile not found, create it
-              // Get username from user metadata if available
-              const metadata = user.user_metadata;
-              if (metadata && metadata.username) {
-                username = metadata.username;
-              }
-              
-              try {
-                // Use our dedicated userService to create the profile
-                await userService.createUserProfile(user.id, username);
-                console.log('User profile created successfully');
-              } catch (profileError) {
-                console.error('Failed to create user profile:', profileError);
-                // Continue anyway - the user is authenticated
-              }
-            } else if (profileError) {
-              // Some other error occurred
-              console.error('Error fetching profile:', profileError);
-              // Continue anyway, as the user is authenticated
-            } else if (profile) {
-              username = profile.username;
-            }
-            
-            set({ 
-              isAuthenticated: true, 
-              user: { 
-                id: user.id,
-                email: user.email!,
-                username
-              },
-              isLoading: false
-            });
-          }
-        } catch (error: any) {
-          console.error('Login error:', error);
+        if (!session) {
           set({ 
             isLoading: false, 
-            error: error.message || 'Login failed. Please try again.' 
+            isAuthenticated: false,
+            user: null
+          });
+          return;
+        }
+        
+        try {
+          // Get user data from session
+          const { user: authUser } = session;
+          
+          if (!authUser) {
+            throw new Error('No user in session');
+          }
+          
+          // Get user profile from Supabase
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authUser.id)
+            .single();
+            
+          if (profileError && profileError.code !== 'PGRST116') {
+            // PGRST116 is "no rows returned" error, which we handle below
+            console.error('Error fetching profile:', profileError);
+          }
+          
+          // If profile exists, use it
+          if (profile) {
+            set({
+              isLoading: false,
+              isAuthenticated: true,
+              user: {
+                id: authUser.id,
+                username: profile.username,
+                email: authUser.email || '',
+                preferred_emoji: profile.preferred_emoji
+              }
+            });
+          } else {
+            // If no profile, try to get username from user metadata
+            const username = authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Anonymous';
+            
+            // Create a profile if it doesn't exist
+            try {
+              const { data: newProfile, error: createError } = await supabase
+                .from('profiles')
+                .upsert({
+                  id: authUser.id,
+                  username
+                })
+                .select()
+                .single();
+                
+              if (createError) {
+                throw createError;
+              }
+              
+              set({
+                isLoading: false,
+                isAuthenticated: true,
+                user: {
+                  id: authUser.id,
+                  username,
+                  email: authUser.email || '',
+                  preferred_emoji: newProfile?.preferred_emoji
+                }
+              });
+            } catch (createProfileError) {
+              console.error('Error creating profile:', createProfileError);
+              
+              // Still authenticate the user even if profile creation fails
+              set({
+                isLoading: false,
+                isAuthenticated: true,
+                user: {
+                  id: authUser.id,
+                  username,
+                  email: authUser.email || ''
+                }
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error handling session:', error);
+          set({ 
+            isLoading: false, 
+            isAuthenticated: false,
+            user: null,
+            error: 'Failed to load user profile.'
           });
         }
       },
@@ -211,22 +265,67 @@ export const useAuthStore = create<AuthState>()(
       signup: async (username: string, email: string) => {
         set({ isLoading: true, error: null, success: null });
         
+        // Client-side rate limiting to prevent 429 errors
+        const now = Date.now();
+        const lastSent = get()._lastEmailSentTimestamp;
+        const timeSinceLastSend = now - lastSent;
+        const minimumInterval = 60 * 1000; // 60 seconds minimum between requests
+        
+        if (lastSent > 0 && timeSinceLastSend < minimumInterval) {
+          const remainingSeconds = Math.ceil((minimumInterval - timeSinceLastSend) / 1000);
+          console.log(`Rate limiting prevention: Need to wait ${remainingSeconds} more seconds`);
+          
+          set({
+            isLoading: false,
+            error: `Please wait ${remainingSeconds} seconds before requesting another verification email.`,
+            verificationPending: false
+          });
+          return;
+        }
+        
         try {
           console.log('Starting signup process for:', email, username);
+          
+          // Get the exact URL to use for redirection (same one for consistency)
+          const redirectUrl = getAuthRedirectUrl();
+          console.log('Signup redirect URL:', redirectUrl);
+          
+          // Generate a strong random password (required by Supabase)
+          const randomPassword = Math.random().toString(36).slice(-10) + 
+                               Math.random().toString(36).toUpperCase().slice(-2) + 
+                               Math.random().toString(21).slice(2, 7) + 
+                               '!';  // Ensure it meets password requirements
+          
+          console.log('Attempting auth.signUp with emailRedirectTo');
           
           // Sign up the user with magic link (passwordless) flow
           const { data, error } = await supabase.auth.signUp({
             email,
-            // Required by Supabase even though we won't use it for passwordless auth
-            password: Math.random().toString(36).slice(-10) + Math.random().toString(36).toUpperCase().slice(-2),
+            password: randomPassword,
             options: {
               data: {
                 username  // Store username in user metadata
               },
               // Use our proper deep linking redirect URL for email verification
-              emailRedirectTo: getAuthRedirectUrl()
+              emailRedirectTo: redirectUrl
             }
           });
+          
+          // Update last email sent timestamp to apply rate limiting
+          set({ _lastEmailSentTimestamp: Date.now() });
+          
+          console.log('SignUp response:', 
+                      'Data:', data ? 'Present' : 'Null', 
+                      'User:', data?.user ? 'Present' : 'Null', 
+                      'Session:', data?.session ? 'Present' : 'Null',
+                      'Error:', error ? error.message : 'None');
+          
+          // Extra diagnostic logging for signup flow
+          if (data?.user) {
+            console.log('User created with ID:', data.user.id);
+            console.log('Email confirmed?', data.user.email_confirmed_at ? 'Yes' : 'No');
+            console.log('User metadata:', JSON.stringify(data.user.user_metadata));
+          }
           
           if (error) throw error;
           
@@ -237,6 +336,8 @@ export const useAuthStore = create<AuthState>()(
             try {
               // Attempt to create profile using service role client with a simpler approach
               console.log('Creating profile for user ID:', data.user.id);
+              
+              let profileCreated = false;
               
               // Option 1: First try direct SQL insert via RPC
               try {
@@ -253,44 +354,46 @@ export const useAuthStore = create<AuthState>()(
                   throw rpcError; // Will trigger fallback
                 } else {
                   console.log('Profile created successfully via RPC');
-                  return; // Success path
+                  profileCreated = true;
                 }
               } catch (rpcAttemptError) {
                 // Fallback to regular insert if RPC doesn't exist
                 console.log('Falling back to direct insert');
-              }
-              
-              // Option 2: Fall back to direct insert
-              try {
-                // Try with minimal fields
-                const { data: profile, error: profileError } = await supabaseAdmin
-                  .from('profiles')
-                  .upsert({
-                    id: data.user.id,
-                    username: username
-                  })
-                  .select()
-                  .single();
-                  
-                if (profileError) {
-                  console.error('Error creating profile with standard insert:', profileError);
-                  throw profileError;
-                }
                 
-                console.log('Profile created successfully via direct insert');
-              } catch (directInsertError) {
-                console.error('Failed to create profile via direct insert:', directInsertError);
-                
-                // Last resort - create profile via userService
+                // Option 2: Fall back to direct insert
                 try {
-                  console.log('Final attempt: Using userService.createUserProfile');
-                  const userProfile = await userService.createUserProfile(data.user.id, username);
-                  if (userProfile) {
-                    console.log('Profile created via userService');
+                  // Try with minimal fields
+                  const { data: profile, error: profileError } = await supabaseAdmin
+                    .from('profiles')
+                    .upsert({
+                      id: data.user.id,
+                      username: username
+                    })
+                    .select()
+                    .single();
+                    
+                  if (profileError) {
+                    console.error('Error creating profile with standard insert:', profileError);
+                    throw profileError;
                   }
-                } catch (userServiceError) {
-                  console.error('All profile creation methods failed:', userServiceError);
-                  throw userServiceError;
+                  
+                  console.log('Profile created successfully via direct insert');
+                  profileCreated = true;
+                } catch (directInsertError) {
+                  console.error('Failed to create profile via direct insert:', directInsertError);
+                  
+                  // Last resort - create profile via userService
+                  try {
+                    console.log('Final attempt: Using userService.createUserProfile');
+                    const userProfile = await userService.createUserProfile(data.user.id, username);
+                    if (userProfile) {
+                      console.log('Profile created via userService');
+                      profileCreated = true;
+                    }
+                  } catch (userServiceError) {
+                    console.error('All profile creation methods failed:', userServiceError);
+                    // Don't throw, just continue to handle auth state
+                  }
                 }
               }
               
@@ -338,10 +441,41 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error: any) {
           console.error("Signup error:", error);
-          set({ 
-            isLoading: false, 
-            error: error.message || 'Signup failed. Please try again.' 
-          });
+          let errorMsg = error.message || 'Signup failed. Please try again.';
+          
+          // Handle rate limiting errors gracefully
+          if (error.status === 429 || 
+              (errorMsg && errorMsg.toLowerCase().includes('security purposes'))) {
+            // Extract wait time if available
+            const waitTimeMatch = errorMsg.match(/after (\d+) seconds/);
+            const waitTime = waitTimeMatch ? parseInt(waitTimeMatch[1], 10) : 60;
+            
+            console.log('Rate limiting error detected during signup');
+            set({
+              isLoading: false,
+              error: `Please wait ${waitTime} seconds before requesting another verification email.`,
+              verificationPending: false
+            });
+            
+            // Update the timestamp to prevent further requests
+            set({ _lastEmailSentTimestamp: Date.now() });
+          }
+          // Improve error message for email already exists
+          else if (errorMsg.toLowerCase().includes('user already registered') || 
+                   errorMsg.toLowerCase().includes('email already exists')) {
+            errorMsg = 'An account with this email already exists. Please log in or use a different email.';
+            set({ 
+              isLoading: false, 
+              error: errorMsg
+            });
+          }
+          // Handle other errors
+          else {
+            set({ 
+              isLoading: false, 
+              error: errorMsg
+            });
+          }
         }
       },
 
@@ -358,6 +492,16 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      updateSession: (updatedUser: User) => {
+        // Update the user object in the store
+        set(state => ({
+          user: {
+            ...state.user,
+            ...updatedUser
+          }
+        }));
+      },
+
       clearError: () => {
         set({ error: null });
       },
@@ -370,21 +514,9 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        // Only persist these fields
         isAuthenticated: state.isAuthenticated,
         user: state.user,
-        // Explicitly exclude temporary states
       }),
-      onRehydrateStorage: () => (state) => {
-        // Log when rehydration happens
-        console.log('Auth store rehydrated:', 
-          state ? `User: ${state.user?.username || 'no username'}` : 'no state');
-        
-        // Always verify session with Supabase when rehydrating from storage
-        setTimeout(() => {
-          useAuthStore.getState().checkSession();
-        }, 500);
-      },
     }
   )
 );

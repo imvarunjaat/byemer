@@ -266,24 +266,39 @@ export default function JoinRoomScreen() {
       // Use user ID if authenticated, or generate a random one for anonymous
       const userId = isAuthenticated && user ? user.id : `anon_${Math.random().toString(36).substring(2, 9)}`;
       
-      // Join the room in Supabase
-      const joined = await roomService.joinRoom(roomData.id, userId);
+      // Join the room in Supabase - this now returns additional information
+      const result = await roomService.joinRoom(roomData.id, userId, nickname);
       
-      if (!joined) {
+      if (!result.participant) {
         throw new Error('Failed to join room');
       }
-      
-      // Navigate to the room with the room ID
-      router.push({
-        pathname: "/room/[id]",
-        params: { id: roomData.id, nickname }
-      });
+
+      // Check if user was already a member
+      if (result.alreadyJoined) {
+        // Show a brief toast or message
+        Alert.alert(
+          'Already a Member',
+          "You're already a member of this room. Heading back in now!",
+          [{ text: 'OK', onPress: () => navigateToRoom() }]
+        );
+      } else {
+        // Just navigate directly for new joins
+        navigateToRoom();
+      }
       
     } catch (error) {
       console.error('Error joining room:', error);
       setError('Failed to join room. Please try again.');
       setIsJoining(false);
     }
+  };
+
+  // Helper function to navigate to the room
+  const navigateToRoom = () => {
+    router.push({
+      pathname: "/room/[id]",
+      params: { id: roomData!.id, nickname }
+    });
   };
 
   // Add state for keyboard height

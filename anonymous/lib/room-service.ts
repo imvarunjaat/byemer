@@ -188,7 +188,7 @@ export const roomService = {
   },
 
   // Join a room
-  async joinRoom(roomId: string, userId: string, nickname?: string): Promise<RoomParticipant | null> {
+  async joinRoom(roomId: string, userId: string, nickname?: string): Promise<{ participant: RoomParticipant | null; alreadyJoined: boolean }> {
     try {
       // First check if already joined
       const { data: existing } = await supabase
@@ -218,7 +218,7 @@ export const roomService = {
         // Add to user's recent rooms
         this.addRoomToRecents(roomId, userId, nickname);
           
-        return existing;
+        return { participant: existing, alreadyJoined: true };
       }
 
       // Insert new participant
@@ -240,10 +240,10 @@ export const roomService = {
       // Add to user's recent rooms
       this.addRoomToRecents(roomId, userId, nickname);
       
-      return data;
+      return { participant: data, alreadyJoined: false };
     } catch (error) {
       console.error('Error joining room:', error);
-      return null;
+      return { participant: null, alreadyJoined: false };
     }
   },
   
@@ -564,8 +564,16 @@ export const messageService = {
     // First, check for local messages that might have been added while offline
     this.checkLocalMessages(roomId, callback);
     
+    // Create a unique channel name based on roomId
+    const channelName = `room-${roomId}-messages-${Date.now()}`;
+    console.log(`Creating channel: ${channelName}`);
+    
+    // Set up the channel with status event handlers
     const subscription = supabase
-      .channel(`room-${roomId}-messages`)
+      .channel(channelName)
+      .on('system', { event: 'connection_status' }, (status) => {
+        console.log(`Realtime connection status for room ${roomId}:`, status);
+      })
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -620,10 +628,24 @@ export const messageService = {
     
     console.log('Subscription created and activated');
 
+    // Handle potential connection errors
+    subscription.on('system', { event: 'reconnect_attempt' }, () => {
+      console.log(`Attempting to reconnect to room ${roomId} channel`);
+    });
 
-    // Return unsubscribe function
+    subscription.on('system', { event: 'disconnect' }, (reason) => {
+      console.log(`Disconnected from room ${roomId} channel:`, reason);
+    });
+
+    // Return unsubscribe function with proper cleanup
     return () => {
-      supabase.removeChannel(subscription);
+      console.log(`Cleaning up subscription for room ${roomId}`);
+      try {
+        supabase.removeChannel(subscription);
+        console.log(`Successfully removed channel for room ${roomId}`);
+      } catch (error) {
+        console.error(`Error removing channel for room ${roomId}:`, error);
+      }
     };
   },
   

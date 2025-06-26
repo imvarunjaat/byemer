@@ -1,11 +1,12 @@
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { useThemeStore } from "@/store/theme-store";
 import { useAuthStore } from "@/store/auth-store";
 import { configureDeepLinking } from "@/lib/deep-linking";
+import { ErrorInterceptor } from "@/components/ErrorBoundary";
 
 export const unstable_settings = {
   initialRouteName: "(tabs)",
@@ -31,7 +32,8 @@ export default function RootLayout() {
     if (loaded) {
       SplashScreen.hideAsync();
       
-      // Initialize deep linking for authentication
+      // Initialize deep linking for authentication - must happen early in the app lifecycle
+      console.log('Configuring deep linking handlers...');
       configureDeepLinking();
       
       // Reset any stale verification states but keep user session
@@ -40,9 +42,31 @@ export default function RootLayout() {
       clearError();
       
       // Check for existing session on app startup
+      console.log('Checking for existing auth session...');
       checkSession();
     }
   }, [loaded]);
+
+  const { isAuthenticated, user } = useAuthStore();
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (!loaded) return;
+
+    const inAuthGroup = segments[0] === 'login' || segments[0] === 'signup' || segments[0] === 'otp-login' || segments[0] === 'auth';
+
+    if (isAuthenticated && !user && !inAuthGroup) {
+      // User is authenticated but profile not loaded, and not in auth flow, redirect to login to ensure profile is fetched
+      router.replace('/login');
+    } else if (isAuthenticated && inAuthGroup) {
+      // User is authenticated and in auth flow, redirect to home
+      router.replace('/');
+    } else if (!isAuthenticated && !inAuthGroup) {
+      // User is not authenticated and not in auth flow, redirect to login
+      router.replace('/login');
+    }
+  }, [isAuthenticated, user, loaded, segments, router]);
 
   if (!loaded) {
     return null;
@@ -56,6 +80,7 @@ function RootLayoutNav() {
   
   return (
     <>
+      <ErrorInterceptor />
       <StatusBar style={isDarkMode ? "light" : "dark"} />
       <Stack
         screenOptions={{

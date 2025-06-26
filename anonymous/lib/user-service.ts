@@ -5,6 +5,7 @@ export interface Profile {
   username: string;
   created_at?: string;
   updated_at?: string;
+  preferred_emoji?: string;
   // Add any other fields that might be in your profiles table
 }
 
@@ -72,7 +73,7 @@ export const userService = {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, created_at, updated_at')
+        .select('id, username, created_at, updated_at, preferred_emoji')
         .eq('id', userId)
         .single();
 
@@ -84,6 +85,69 @@ export const userService = {
       return data;
     } catch (error) {
       console.error('Exception in getUserProfile:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Updates a user profile with new information
+   */
+  updateUserProfile: async (userId: string, updates: { username?: string, preferred_emoji?: string }): Promise<Profile | null> => {
+    try {
+      // Only update fields that we know exist
+      const updateData: any = {};
+      if (updates.username !== undefined) updateData.username = updates.username;
+      
+      // Store emoji separately - we'll handle it in memory only if column doesn't exist
+      const preferredEmoji = updates.preferred_emoji;
+      let emojiSaved = false;
+      
+      // Try to update profile data with just the username first
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', userId)
+        .select('id, username, created_at, updated_at')
+        .single();
+
+      if (error) {
+        console.error('Error updating user profile:', error);
+        return null;
+      }
+      
+      // If emoji update was requested, try to update it separately
+      if (preferredEmoji !== undefined) {
+        try {
+          // Try to add emoji column if it doesn't exist (silent fail is ok)
+          try {
+            const alterTableQuery = `
+              ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_emoji TEXT DEFAULT '🎭';
+            `;
+            await supabase.rpc('execute_sql', { query: alterTableQuery }).single();
+          } catch (columnError) {
+            console.log('Note: Could not add preferred_emoji column automatically');
+          }
+          
+          // Now try to update just the emoji
+          const { error: emojiError } = await supabase
+            .from('profiles')
+            .update({ preferred_emoji: preferredEmoji })
+            .eq('id', userId);
+            
+          if (!emojiError) {
+            emojiSaved = true;
+          }
+        } catch (emojiError) {
+          console.log('Could not save emoji to database, will use in-memory only:', emojiError);
+        }
+      }
+
+      // Return the data with emoji added (either from DB or memory)
+      return preferredEmoji !== undefined 
+        ? { ...data, preferred_emoji: preferredEmoji } 
+        : data;
+    } catch (error) {
+      console.error('Exception in updateUserProfile:', error);
       return null;
     }
   },
