@@ -32,7 +32,7 @@ import { colors as themeColors } from '@/constants/colors';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { scaleSize, verticalScale, scaleFont } from '../../utils/responsive';
 import { roomService, messageService } from '@/lib/room-service';
-import { supabase, Room, RoomParticipant, Message as SupabaseMessage } from '@/lib/supabase';
+import { supabase, Room, RoomParticipant, Message as SupabaseMessage, checkRealtimeConnection } from '@/lib/supabase';
 
 type Style = ViewStyle | TextStyle | ImageStyle | Animated.AnimatedProps<ViewStyle>; // Specified ViewStyle for AnimatedProps
 
@@ -137,6 +137,10 @@ export default function CreatedRoomScreen() {
   
   // For managing real-time subscription
   const messageSubscriptionRef = useRef<() => void | null>(null);
+  // Track mounted state to prevent state updates after unmounting
+  const isMountedRef = useRef<boolean>(true);
+  // Reference to store connection check interval
+  const connectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [members, setMembers] = useState<RoomMember[]>([
     // Initial empty state, will be populated from database
@@ -256,6 +260,55 @@ export default function CreatedRoomScreen() {
         
         // Store unsubscribe function
         messageSubscriptionRef.current = unsubscribe;
+        
+        // Set up periodic connection health check
+        console.log('Setting up realtime connection monitoring');
+        connectionCheckIntervalRef.current = setInterval(() => {
+          if (isMountedRef.current) {
+            // Check realtime connection health
+            const status = checkRealtimeConnection();
+            console.log('Realtime connection status:', status);
+            
+            // If connection is unhealthy, restart the subscription
+            if (!status.healthy) {
+              console.log('Unhealthy connection detected, restarting subscription');
+              
+              // Clean up old subscription
+              if (messageSubscriptionRef.current) {
+                messageSubscriptionRef.current();
+              }
+              
+              // Create new subscription
+              const newUnsubscribe = messageService.subscribeToNewMessages(room.id, (newMessage) => {
+                // Add new message to state (same handler as before)
+                const userId = isAuthenticated && user ? user.id : 'anonymous';
+                const formattedMessage: MessageType = {
+                  id: newMessage.id || `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                  text: newMessage.content,
+                  isCurrentUser: newMessage.user_id === userId || newMessage.nickname === nickname,
+                  timestamp: new Date(newMessage.created_at || newMessage.sent_at || Date.now()).getTime(),
+                  nickname: newMessage.nickname
+                };
+                
+                // Check if this message already exists to avoid duplicates
+                const isDuplicate = messages.some(m => 
+                  (m.id === formattedMessage.id) || 
+                  (m.text === formattedMessage.text && 
+                   Math.abs(m.timestamp - formattedMessage.timestamp) < 5000 && 
+                   m.isCurrentUser === formattedMessage.isCurrentUser)
+                );
+                
+                if (!isDuplicate) {
+                  console.log('Adding new message:', formattedMessage);
+                  setMessages(prev => [...prev, formattedMessage]);
+                }
+              });
+              
+              // Update subscription reference
+              messageSubscriptionRef.current = newUnsubscribe;
+            }
+          }
+        }, 30000); // Check every 30 seconds
         
         setLoading(false);
       } catch (err) {
@@ -907,12 +960,12 @@ export default function CreatedRoomScreen() {
                   <TextInput
                     ref={textInputRef}
                     style={[styles.textInput, { 
-                      color: appTheme.text, 
-                      maxHeight: 100
+                      color: appTheme.text,
+                      height: Platform.OS === 'ios' ? 36 : 40
                     }]}
                     placeholder="Type a message..."
                     placeholderTextColor={appTheme.secondaryText}
-                    multiline
+                    numberOfLines={1}
                     value={message}
                     onChangeText={setMessage}
                     returnKeyType="send"
@@ -1096,8 +1149,11 @@ const styles = StyleSheet.create({
     fontSize: scaleFont(16),
     minHeight: verticalScale(28),
     padding: 0,
-    textAlignVertical: 'top', 
+    textAlignVertical: 'center',
     includeFontPadding: false,
+    maxHeight: verticalScale(36),
+    height: verticalScale(36),
+    overflow: 'hidden',
   },
   clearButton: {
     position: 'absolute',
