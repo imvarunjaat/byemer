@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Pressable, Alert } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Pressable, Alert, Linking } from 'react-native';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
@@ -249,20 +249,47 @@ export default function ProfileScreen() {
                 thumbColor={notificationsEnabled ? theme.secondaryAccent : '#f4f3f4'}
               />
             </View>
-            <View style={styles.settingItem}>
+            <Pressable 
+              style={styles.settingItem} 
+              onPress={() => Linking.openURL('https://imvarunjaat.github.io/privacy-policy/')}
+            >
               <View style={styles.settingInfo}>
                 <Ionicons name="shield" size={20} color={theme.accent} />
                 <Text style={[styles.settingText, { color: theme.text }]}>Privacy Policy</Text>
               </View>
-            </View>
+              <Feather name="chevron-right" size={18} color={theme.secondaryText} />
+            </Pressable>
+            
+            <View style={styles.spacer} />
+            <View style={styles.spacer} />
+            
             <Button
               title="Log Out"
               onPress={handleLogout}
               variant="outline"
               icon={<Ionicons name="log-out" size={20} color={theme.accent} />}
-              style={{ ...styles.logoutButton, marginTop: hp('2%'), marginBottom: hp('1%') }}
+              style={{ ...styles.logoutButton, marginTop: hp('1%'), marginBottom: hp('1%') }}
             />
+            
+            <View style={styles.spacer} />
+            <View style={styles.spacer} />
+            <View style={styles.spacer} />
+            
+            {/* About This App section */}
+            <View style={styles.aboutSection}>
+              <Text style={[styles.aboutTitle, { color: theme.text }]}>About This App</Text>
+              <Text style={[styles.aboutText, { color: theme.secondaryText }]}>
+                Built with <Text style={{ color: theme.accent }}>❤️</Text> by:- Varun Chaudhary
+              </Text>
+              <Text 
+                style={[styles.aboutEmail, { color: '#007AFF' }]}
+                onPress={() => Linking.openURL('mailto:contact.isThatu@gmail.com')}
+              >
+                contact.isThatu@gmail.com
+              </Text>
+            </View>
           </GlassmorphicCard>
+
         </GlassmorphicCard>
       </ScrollView>
     </SafeAreaView>
@@ -354,7 +381,7 @@ const styles = StyleSheet.create({
   },
   settingsCard: {
     marginTop: hp('2%'),
-    marginBottom: hp('3%'),
+    marginBottom: hp('2%'),
     width: '100%',
     maxWidth: wp('98%'),
     alignSelf: 'center',
@@ -386,5 +413,32 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     marginTop: hp('1%'),
+  },
+  aboutSection: {
+    marginTop: hp('5%'),
+    marginBottom: hp('1%'),
+    alignItems: 'center',
+    paddingHorizontal: wp('2%'),
+    paddingTop: hp('2%'),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(150, 150, 150, 0.2)',
+  },
+  spacer: {
+    height: hp('1%'),
+    width: '100%',
+  },
+  aboutTitle: {
+    fontSize: RFValue(16),
+    fontWeight: '600',
+    marginBottom: hp('1%'),
+  },
+  aboutText: {
+    fontSize: RFValue(14),
+    textAlign: 'center',
+    marginBottom: hp('3%'),
+  },
+  aboutEmail: {
+    fontSize: RFValue(13),
+    textAlign: 'center',
   },
 });
