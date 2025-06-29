@@ -7,6 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuthStore } from "@/store/auth-store";
 import { supabase } from "@/lib/supabase";
 import TermsAcceptanceModal from "@/components/TermsAcceptanceModal";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
   const { user, logout } = useAuthStore();
@@ -14,6 +15,7 @@ export default function TabLayout() {
   const [isLoading, setIsLoading] = useState(true);
   const { isDarkMode } = useThemeStore();
   const theme = isDarkMode ? colors.dark : colors.light;
+  const insets = useSafeAreaInsets(); // Get safe area insets
 
   // Check terms acceptance
   useEffect(() => {
@@ -104,8 +106,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.background,
           borderTopColor: theme.border,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom, // Add bottom inset to tab bar height
+          paddingBottom: 8 + insets.bottom, // Add bottom inset to padding
         },
         tabBarLabelStyle: {
           fontSize: 12,

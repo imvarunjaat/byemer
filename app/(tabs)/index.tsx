@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, ColorValue, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, ColorValue, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { useRouter } from 'expo-router';
@@ -112,7 +113,10 @@ export default function HomeScreen() {
   };
   
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView 
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={['top', 'left', 'right', 'bottom']}
+    >
       <LinearGradient
         colors={isDarkMode 
           ? ['#121212', '#1E1E1E', '#121212'] 
@@ -147,7 +151,7 @@ export default function HomeScreen() {
         </View>
         
         <ScrollView 
-          contentContainerStyle={styles.content}
+          contentContainerStyle={{...styles.content, paddingBottom: hp('10%')}}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.heroSection}>

@@ -7,6 +7,7 @@ import { useThemeStore } from "@/store/theme-store";
 import { useAuthStore } from "@/store/auth-store";
 import AuthProvider from "@/components/AuthProvider";
 import { View, Text } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Tell the system to use (tabs) as our initialRouteName and home page
 export const unstable_settings = {
@@ -73,9 +74,10 @@ function RootLayoutNav() {
   }, []);
   
   return (
-    <AuthProvider>
-      <StatusBar style={isDarkMode ? "light" : "dark"} />
-      <Stack
+    <SafeAreaProvider>
+      <AuthProvider>
+        <StatusBar style={isDarkMode ? "light" : "dark"} />
+        <Stack
         initialRouteName="(tabs)"
         screenOptions={{
           headerShown: false,
@@ -154,7 +156,8 @@ function RootLayoutNav() {
             animation: 'slide_from_bottom',
           }} 
         />
-      </Stack>
-    </AuthProvider>
+        </Stack>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

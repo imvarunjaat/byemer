@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, ScrollView, Switch, Pressable, Alert, Linking } from 'react-native';
-import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
-import { RFValue } from 'react-native-responsive-fontsize';
+import { StyleSheet, Text, View, ScrollView, Switch, Pressable, Alert, Linking, Platform, KeyboardAvoidingView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { responsiveWidth, responsiveHeight, scaledFontSize, spacing, radius, margin } from '@/utils/scale';
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
@@ -148,12 +148,20 @@ export default function ProfileScreen() {
   };
   
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background, flex: 1 }]}>
-      <ScrollView 
+    <SafeAreaView 
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={['top', 'left', 'right', 'bottom']}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1, minHeight: '100%', ...styles.content }}
-        showsVerticalScrollIndicator={false}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
+        <ScrollView 
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1, minHeight: '100%', ...styles.content, paddingBottom: responsiveHeight(10) }}
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
         </View>
@@ -268,7 +276,7 @@ export default function ProfileScreen() {
               onPress={handleLogout}
               variant="outline"
               icon={<Ionicons name="log-out" size={20} color={theme.accent} />}
-              style={{ ...styles.logoutButton, marginTop: hp('1%'), marginBottom: hp('1%') }}
+              style={{ ...styles.logoutButton, marginTop: responsiveHeight(1), marginBottom: responsiveHeight(1) }}
             />
             
             <View style={styles.spacer} />
@@ -291,7 +299,8 @@ export default function ProfileScreen() {
           </GlassmorphicCard>
 
         </GlassmorphicCard>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -301,144 +310,143 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'rgba(240,240,255,0.7)',
+    // Remove any padding that might interfere with safe area insets
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 8,
+    marginVertical: margin.sm,
     width: '100%',
   },
   saveButton: {
-    marginLeft: 10,
-    minWidth: 80,
-    height: 45,
+    marginLeft: margin.sm,
+    minWidth: responsiveWidth(20),
+    height: responsiveHeight(5.5),
   },
   saveMessage: {
-    marginTop: 5,
-    fontSize: RFValue(12),
+    marginTop: margin.xs,
+    fontSize: scaledFontSize(12),
     textAlign: 'center',
   },
   content: {
-    paddingHorizontal: wp('5%'),
-    paddingTop: hp('3%'),
-    paddingBottom: hp('12%'),
+    paddingHorizontal: responsiveWidth(5),
+    paddingTop: responsiveHeight(3),
+    paddingBottom: responsiveHeight(12),
     alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: hp('2%'),
-    marginTop: hp('1%'),
+    marginBottom: responsiveHeight(2),
+    marginTop: responsiveHeight(1),
   },
   title: {
-    fontSize: RFValue(28),
+    fontSize: scaledFontSize(28),
     fontWeight: 'bold',
   },
   profileCard: {
-    marginBottom: hp('3%'),
+    marginBottom: responsiveHeight(3),
     width: '100%',
-    maxWidth: wp('95%'),
+    maxWidth: responsiveWidth(95),
     alignSelf: 'center',
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: hp('3%'),
+    marginBottom: responsiveHeight(3),
   },
   avatarContainer: {
-    width: wp('22%'),
-    height: wp('22%'),
-    borderRadius: wp('11%'),
+    width: responsiveWidth(22),
+    height: responsiveWidth(22),
+    borderRadius: responsiveWidth(11),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: hp('2%'),
+    marginBottom: responsiveHeight(2),
   },
   avatarEmoji: {
-    fontSize: RFValue(44),
+    fontSize: scaledFontSize(44),
   },
   profileName: {
-    fontSize: RFValue(20),
+    fontSize: scaledFontSize(20),
     fontWeight: 'bold',
-    marginBottom: hp('0.5%'),
+    marginBottom: responsiveHeight(0.5),
   },
   profileSubtitle: {
-    fontSize: RFValue(13),
+    fontSize: scaledFontSize(13),
     textAlign: 'center',
     opacity: 0.7,
   },
   nicknameSection: {
-    marginBottom: hp('3%'),
+    marginBottom: responsiveHeight(3),
   },
   emojiSection: {
-    marginBottom: hp('2%'),
+    marginBottom: responsiveHeight(2),
   },
   sectionTitle: {
-    fontSize: RFValue(16),
+    fontSize: scaledFontSize(16),
     fontWeight: '600',
-    marginBottom: hp('1%'),
+    marginBottom: responsiveHeight(1),
   },
   emojiSelectorContainer: {
-    marginTop: hp('2%'),
+    marginTop: responsiveHeight(2),
   },
   settingsCard: {
-    marginTop: hp('2%'),
-    marginBottom: hp('2%'),
+    marginTop: responsiveHeight(2),
+    marginBottom: responsiveHeight(2),
     width: '100%',
-    maxWidth: wp('98%'),
+    maxWidth: responsiveWidth(98),
     alignSelf: 'center',
     backgroundColor: 'rgba(124,77,255,0.04)',
-    borderRadius: wp('6%'),
-    paddingHorizontal: wp('5%'),
-    paddingVertical: hp('2%'),
+    borderRadius: radius.lg,
+    paddingHorizontal: responsiveWidth(5),
+    paddingVertical: responsiveHeight(2),
   },
   cardTitle: {
-    fontSize: RFValue(18),
+    fontSize: scaledFontSize(18),
     fontWeight: '600',
-    marginBottom: hp('1.2%'),
+    marginBottom: responsiveHeight(1.2),
   },
   settingItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: hp('1.2%'),
+    paddingVertical: responsiveHeight(1.2),
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150, 150, 150, 0.2)',
+    borderBottomColor: 'rgba(150,150,150,0.1)',
   },
   settingInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   settingText: {
-    fontSize: RFValue(15),
-    marginLeft: wp('2%'),
-  },
-  logoutButton: {
-    marginTop: hp('1%'),
-  },
-  aboutSection: {
-    marginTop: hp('5%'),
-    marginBottom: hp('1%'),
-    alignItems: 'center',
-    paddingHorizontal: wp('2%'),
-    paddingTop: hp('2%'),
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(150, 150, 150, 0.2)',
+    fontSize: scaledFontSize(15),
+    marginLeft: responsiveWidth(3),
+    fontWeight: '500',
   },
   spacer: {
-    height: hp('1%'),
+    height: responsiveHeight(1),
     width: '100%',
   },
+  logoutButton: {
+    backgroundColor: 'transparent',
+    marginTop: responsiveHeight(1),
+  },
+  aboutSection: {
+    marginTop: responsiveHeight(2),
+    alignItems: 'center',
+  },
   aboutTitle: {
-    fontSize: RFValue(16),
+    fontSize: scaledFontSize(14),
     fontWeight: '600',
-    marginBottom: hp('1%'),
+    marginBottom: responsiveHeight(0.5),
   },
   aboutText: {
-    fontSize: RFValue(14),
+    fontSize: scaledFontSize(12),
     textAlign: 'center',
-    marginBottom: hp('3%'),
+    marginBottom: responsiveHeight(0.5),
   },
   aboutEmail: {
-    fontSize: RFValue(13),
+    fontSize: scaledFontSize(12),
     textAlign: 'center',
+    marginTop: responsiveHeight(0.5),
   },
 });
