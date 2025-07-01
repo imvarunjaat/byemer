@@ -1,0 +1,3 @@
+# Example environment variables for Gen Z Anonymous Group Chat App
+EXPO_PUBLIC_SUPABASE_URL=https://axvimtjcoqnsuvldqbyu.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here

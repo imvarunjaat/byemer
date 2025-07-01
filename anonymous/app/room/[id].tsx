@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { 
   Text, 
   View, 
@@ -158,6 +159,30 @@ export default function CreatedRoomScreen() {
   const { id } = params;
   const [roomCode, setRoomCode] = useState('');
   const [roomEmoji, setRoomEmoji] = useState(params.emoji || '💬');
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetchParticipants = async () => {
+        if (!id) return;
+        const participants = await roomService.getRoomParticipants(id);
+        const membersList: RoomMember[] = participants.map(p => {
+          const isCurrentUser = isAuthenticated && user ? p.user_id === user.id : 
+            p.nickname === nickname;
+          
+          return {
+            id: p.user_id,
+            name: isCurrentUser ? 'You' : p.nickname,
+            isAdmin: roomData?.created_by === p.user_id,
+            is_active: p.is_active,
+            joined_at: p.joined_at,
+            last_seen_at: p.last_seen_at
+          };
+        });
+        setMembers(membersList);
+      };
+      fetchParticipants();
+    }, [id, roomData, nickname, isAuthenticated, user])
+  );
 
   // Fetch room data
   useEffect(() => {

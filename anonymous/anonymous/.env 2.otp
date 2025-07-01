@@ -1,0 +1,10 @@
+# Environment variables for OTP Edge Functions
+SUPABASE_URL=https://luumimkonduxrligzvnb.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+
+# SMTP Settings
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-password-here
+EMAIL_FROM=noreply@yourdomain.com
