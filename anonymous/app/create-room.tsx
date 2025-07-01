@@ -224,7 +224,8 @@ export default function CreateRoomScreen() {
         roomName.trim(),
         user.id,
         false, // not private by default
-        accessCode
+        accessCode,
+        selectedEmoji // Pass selected emoji to create room function
       );
       
       if (!room) {

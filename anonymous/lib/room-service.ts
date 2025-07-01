@@ -4,6 +4,54 @@ import { Profile } from './user-service';
 
 // Service for managing rooms
 export const roomService = {
+  // Get unread message count for a room
+  async getUnreadMessageCount(roomId: string, userId: string): Promise<number> {
+    try {
+      // Get the last read timestamp for this user and room (using last_accessed as a fallback for last_read_at)
+      const { data: userRoom } = await supabase
+        .from('user_recent_rooms')
+        .select('last_accessed')
+        .eq('user_id', userId)
+        .eq('room_id', roomId)
+        .single();
+      
+      // If we have no record of this room or the user hasn't accessed it yet
+      const lastReadAt = userRoom?.last_accessed || '2000-01-01T00:00:00Z';
+      
+      // Count messages after the last read time
+      const { count, error } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact' })
+        .eq('room_id', roomId)
+        .gt('created_at', lastReadAt)
+        .not('user_id', 'eq', userId); // Don't count the user's own messages
+      
+      if (error) throw error;
+      return count || 0;
+    } catch (error) {
+      console.error('Error getting unread message count:', error);
+      return 0;
+    }
+  },
+  
+  // Mark all messages as read in a room by updating the last_accessed field
+  async markRoomAsRead(roomId: string, userId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('user_recent_rooms')
+        .update({ 
+          last_accessed: new Date().toISOString() // Using last_accessed instead of last_read_at
+        })
+        .eq('user_id', userId)
+        .eq('room_id', roomId);
+      
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error marking room as read:', error);
+      return false;
+    }
+  },
   // Create a new room
   async createRoom(name: string, createdBy: string, isPrivate: boolean = false, accessCode?: string, emoji: string = '💬'): Promise<Room | null> {
     try {
@@ -268,7 +316,7 @@ export const roomService = {
         .upsert({
           user_id: userId,
           room_id: roomId,
-          last_accessed: new Date().toISOString(),
+          last_accessed: new Date().toISOString(), // This is the correct column to use instead of last_read_at
           emoji: emoji, // Use provided emoji
           nickname: nickname // Store the nickname used for this room
         }, {
@@ -332,8 +380,308 @@ export const roomService = {
       return data || [];
     } catch (error) {
       console.error('Error getting room participants:', error);
-      return [];
+      return []; // Return empty array on error
     }
+  },
+  
+  // Check if a user has been kicked from a room
+  async isUserKickedFromRoom(roomId: string, userId: string): Promise<boolean> {
+    try {
+      // First check local storage for kicked users - this is the most reliable method
+      const kickedUsersKey = `kicked_users_${roomId}`;
+      const kickedUsersJSON = await AsyncStorage.getItem(kickedUsersKey);
+      
+      if (kickedUsersJSON) {
+        const kickedUsers = JSON.parse(kickedUsersJSON);
+        if (kickedUsers[userId]) {
+          return true;
+        }
+      }
+      
+      // Before we look at the database, check if this is a room that the user just created
+      const { data: roomInfo } = await supabase
+        .from('rooms')
+        .select('created_by, created_at')
+        .eq('id', roomId)
+        .single();
+      
+      // If this user is the creator of the room, they can't be kicked
+      if (roomInfo && roomInfo.created_by === userId) {
+        console.log(`User ${userId} is the creator of room ${roomId}, can't be kicked`);
+        return false;
+      }
+      
+      // If room was created in last 10 seconds and user is accessing it now,
+      // they're likely creating it, not being kicked
+      if (roomInfo) {
+        const roomCreatedAt = new Date(roomInfo.created_at).getTime();
+        const now = Date.now();
+        const isNewRoom = (now - roomCreatedAt) < 10000; // 10 seconds
+        
+        if (isNewRoom) {
+          console.log(`Room ${roomId} was just created, this is likely not a kick scenario`);
+          return false;
+        }
+      }
+      
+      // First check if user ever joined this room (check recent rooms)
+      const { data: recentRoom } = await supabase
+        .from('user_recent_rooms')
+        .select('id, last_accessed')
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
+        .limit(1);
+        
+      // If no recent room record, user was never in this room
+      if (!recentRoom || recentRoom.length === 0) {
+        console.log(`User ${userId} was never in room ${roomId}, not kicked`);
+        return false; // Not kicked, just never joined
+      }
+      
+      // Now check if they're still in room participants
+      const { data: participant } = await supabase
+        .from('room_participants')
+        .select('id')
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
+        .limit(1);
+      
+      // User was in the room (has recent room) but is no longer a participant
+      if (!participant || participant.length === 0) {
+        // Check if this is the first time the user is accessing the room
+        // by looking at the recent room's last_accessed timestamp
+        const lastAccessed = new Date(recentRoom[0].last_accessed).getTime();
+        const now = Date.now();
+        const isFirstAccess = (now - lastAccessed) > 86400000; // 24 hours
+        
+        if (isFirstAccess) {
+          console.log(`This appears to be first access in a while, not treating as kicked`);
+          return false;
+        }
+        
+        console.log(`User ${userId} was previously in room ${roomId} but isn't anymore - likely kicked`);
+        
+        // Store this in local kicked users for future reference
+        const existingDataJSON = await AsyncStorage.getItem(kickedUsersKey);
+        const kickedUsers = existingDataJSON ? JSON.parse(existingDataJSON) : {};
+        
+        kickedUsers[userId] = {
+          kickedAt: new Date().toISOString(),
+          kickedBy: 'unknown' // We don't know who kicked them
+        };
+        
+        await AsyncStorage.setItem(kickedUsersKey, JSON.stringify(kickedUsers));
+        return true;
+      }
+      
+      return false; // User is still in the room, not kicked
+    } catch (error) {
+      console.error('Error checking if user is kicked:', error);
+      return false; // Default to allowing access if we can't determine
+    }
+  },
+  
+  // Subscribe to room participant changes using a modified approach that doesn't rely on Postgres changes
+  subscribeToRoomParticipants(roomId: string, userId: string, callback: (event: 'joined' | 'left' | 'kicked', participantId: string, nickname?: string) => void): () => void {
+    console.log(`Setting up participant subscription for room ${roomId} with poll-based approach`);
+    
+    // Track current participants
+    let currentParticipants: { [userId: string]: RoomParticipant } = {};
+    let initialCheckComplete = false;
+    let kickDetectionFlag = false;
+    
+    // Get room creator info
+    let roomCreator: string | null = null;
+    
+    // Create a channel name for this subscription
+    const channelName = `room-participants-${roomId}`;
+    
+    // Get room info for creator check
+    // Wrap with Promise.resolve() to ensure we have a full Promise with .catch() method
+    Promise.resolve(
+      supabase
+        .from('rooms')
+        .select('created_by, created_at')
+        .eq('id', roomId)
+        .single()
+    )
+      .then(({ data }) => {
+        if (data) {
+          roomCreator = data.created_by;
+          console.log(`Room ${roomId} creator is ${roomCreator}`);
+        }
+      })
+      .catch((error: any) => {
+        console.error(`Error getting room creator for ${roomId}:`, error);
+      });
+    
+    // Initial load of participants
+    this.getRoomParticipants(roomId).then(participants => {
+      participants.forEach(p => {
+        currentParticipants[p.user_id] = p;
+      });
+      initialCheckComplete = true;
+      console.log(`Loaded ${participants.length} initial participants for room ${roomId}`);
+    }).catch(error => {
+      console.error(`Error loading initial participants for room ${roomId}:`, error);
+    });
+    
+    // Setup polling interval to check for participant changes
+    const pollInterval = setInterval(async () => {
+      try {
+        // Skip polling until initial check is complete
+        if (!initialCheckComplete) {
+          return;
+        }
+        
+        // If current user is room creator, they can't be kicked
+        if (userId === roomCreator) {
+          // Skip kick checks for room creator
+        } else if (!kickDetectionFlag) {
+          // Check if current user was kicked
+          const wasKicked = await this.isUserKickedFromRoom(roomId, userId);
+          if (wasKicked) {
+            console.log('Current user detected as kicked during poll');
+            kickDetectionFlag = true; // Set flag so we only trigger this once
+            callback('kicked', userId, 'You'); // Nickname might not be available here
+            return;
+          }
+        }
+        
+        const latestParticipants = await this.getRoomParticipants(roomId);
+        const latestParticipantsMap: { [userId: string]: RoomParticipant } = {};
+        
+        // Build map of latest participants
+        latestParticipants.forEach(p => {
+          latestParticipantsMap[p.user_id] = p;
+          
+          // Check for new participants
+          if (!currentParticipants[p.user_id]) {
+            console.log(`Detected new participant: ${p.nickname} (${p.user_id})`);
+            callback('joined', p.user_id, p.nickname);
+          }
+        });
+        
+        // Check for participants who left
+        Object.keys(currentParticipants).forEach(pid => {
+          if (!latestParticipantsMap[pid]) {
+            const oldParticipant = currentParticipants[pid];
+            console.log(`Detected participant left: ${oldParticipant?.nickname || 'Unknown'} (${pid})`);
+            
+            // If this is the current user, check if kicked
+            if (pid === userId) {
+              // Check if kicked
+              this.isUserKickedFromRoom(roomId, userId).then(isKicked => {
+                if (isKicked && !kickDetectionFlag) {
+                  console.log('Current user was kicked');
+                  kickDetectionFlag = true; // Set flag so we only trigger this once
+                  callback('kicked', userId, oldParticipant?.nickname || 'You');
+                } else if (!kickDetectionFlag) {
+                  console.log('Current user left');
+                  callback('left', userId, oldParticipant?.nickname || 'You');
+                }
+              });
+            } else {
+              // Other user left
+              callback('left', pid, oldParticipant?.nickname || 'Unknown');
+            }
+          }
+        });
+        
+        // Update current participants
+        currentParticipants = latestParticipantsMap;
+      } catch (error) {
+        console.error(`Error polling participants for room ${roomId}:`, error);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    // Set up enhanced channel with multiple event handlers for real-time participant updates
+    const subscription = supabase
+      .channel(channelName, {
+        config: {
+          broadcast: { self: true }  // Allow seeing your own broadcasts
+        }
+      })
+      .on('broadcast', { event: 'kick' }, payload => {
+        console.log('Received kick broadcast event', payload);
+        // Handle both cases - being kicked yourself and others being kicked
+        if (payload.kickedUserId === userId && !kickDetectionFlag) {
+          console.log('Current user was kicked via broadcast event');
+          kickDetectionFlag = true; // Set flag so we only trigger this once
+          callback('kicked', userId, payload.nickname || 'You');
+        } else if (payload.kickedUserId && payload.kickedUserId !== userId) {
+          // Another participant was kicked, notify UI to update immediately
+          console.log(`Another user was kicked: ${payload.nickname} (${payload.kickedUserId})`);
+          callback('kicked', payload.kickedUserId, payload.nickname || 'Unknown User');
+          
+          // Also remove from our local tracking to ensure UI is consistent
+          if (currentParticipants[payload.kickedUserId]) {
+            delete currentParticipants[payload.kickedUserId];
+          }
+        }
+      })
+      // Also listen on the backup channel for kicks
+      .subscribe((status) => {
+        console.log(`Participants subscription status for room ${roomId}:`, status);
+      });
+      
+    // Add a secondary subscription to catch participant updates through the backup channel
+    const kicksSubscription = supabase
+      .channel(`room-${roomId}-kicks`)
+      .on('broadcast', { event: 'participant_update' }, (payload: any) => {
+        console.log('Received participant_update event:', payload);
+        
+        // Type guard to ensure payload has the expected structure
+        if (payload && typeof payload === 'object' && 'type' in payload && 
+            payload.type === 'kicked' && 'userId' in payload) {
+          
+          // Safely handle the kick event by making sure we're passing a valid event type to callback
+          const eventType: 'joined' | 'left' | 'kicked' = 'kicked';
+          
+          if (payload.userId === userId && !kickDetectionFlag) {
+            kickDetectionFlag = true;
+            callback(eventType, userId, payload.nickname || 'You');
+          } else if (payload.userId !== userId) {
+            callback(eventType, payload.userId, payload.nickname || 'Unknown User');
+            
+            // Update our local tracking
+            if (currentParticipants[payload.userId]) {
+              delete currentParticipants[payload.userId];
+            }
+          }
+        }
+      })
+      .subscribe();
+    
+    console.log('Participant subscription created and activated');
+
+    // Return unsubscribe function with comprehensive cleanup
+    return () => {
+      console.log(`Cleaning up participant subscription for room ${roomId}`);
+      
+      // Clear polling interval
+      clearInterval(pollInterval);
+      
+      // Clean up main subscription
+      try {
+        supabase.removeChannel(subscription);
+        console.log(`Successfully removed participant channel for room ${roomId}`);
+      } catch (channelError) {
+        console.error(`Error removing participant channel for room ${roomId}:`, channelError);
+      }
+      
+      // Also clean up the kicks subscription
+      try {
+        supabase.removeChannel(kicksSubscription);
+        console.log(`Successfully removed kicks channel for room ${roomId}`);
+      } catch (kicksError) {
+        console.error(`Error removing kicks channel for room ${roomId}:`, kicksError);
+      }
+      
+      // Clear any stored references
+      currentParticipants = {};
+      kickDetectionFlag = false;
+    };
   },
 
   // Delete a room (only if created by user)
@@ -379,11 +727,213 @@ export const roomService = {
       console.error('Error deleting room:', error);
       return false;
     }
+  },
+
+  // Kick a member from a room (only if executed by room creator)
+  async kickMember(roomId: string, adminUserId: string, userId: string, memberNickname?: string): Promise<boolean> {
+    try {
+      // First verify that the user requesting the kick is the room creator
+      const { data: room, error: roomError } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .eq('created_by', adminUserId)
+        .single();
+
+      if (roomError || !room) {
+        console.error('Not authorized to kick: not room creator');
+        return false;
+      }
+      
+      // Store the participant data before deletion to get their information
+      const { data: participantData } = await supabase
+        .from('room_participants')
+        .select('*')
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
+        .single();
+      
+      // Get participant nickname or use provided name as fallback
+      const nickname = participantData?.nickname || memberNickname || 'Unknown User';
+
+      // Remove the participant from the room
+      const { error } = await supabase
+        .from('room_participants')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error kicking member:', error);
+        throw error;
+      }
+      
+      // Also remove from user_recent_rooms for the kicked member
+      try {
+        const { error: recentRoomError } = await supabase
+          .from('user_recent_rooms')
+          .delete()
+          .eq('room_id', roomId)
+          .eq('user_id', userId);
+          
+        if (recentRoomError) {
+          console.error('Error removing from recent rooms for kicked member:', recentRoomError);
+          // Continue anyway as the main action succeeded
+        }
+      } catch (recentError) {
+        console.error('Failed to remove room from recent rooms for kicked member:', recentError);
+        // Continue anyway as the main action succeeded
+      }
+      
+      // Broadcast a system message about the kick to all participants
+      try {
+        await supabase
+          .from('messages')
+          .insert({
+            room_id: roomId,
+            user_id: 'system', // Using 'system' to indicate this is a system message
+            content: `${nickname} has been removed from the room`,
+            created_at: new Date().toISOString(),
+            nickname: 'System',
+            sent_at: Date.now().toString()
+          });
+      } catch (messageError) {
+        console.error('Error broadcasting kick message:', messageError);
+        // Continue anyway as the main kick action succeeded
+      }
+      
+      // Store kicked user information locally
+      try {
+        const kickedUsersKey = `kicked_users_${roomId}`;
+        const existingDataJSON = await AsyncStorage.getItem(kickedUsersKey);
+        const kickedUsers = existingDataJSON ? JSON.parse(existingDataJSON) : {};
+        
+        // Add this user to the kicked users
+        kickedUsers[userId] = {
+          kickedAt: new Date().toISOString(),
+          kickedBy: adminUserId
+        };
+        
+        await AsyncStorage.setItem(kickedUsersKey, JSON.stringify(kickedUsers));
+        
+        // Broadcast a kick event through a dedicated channel for reliable real-time updates
+        try {
+          // Create a stable channel name that all clients would be listening on
+          const channelName = `room-participants-${roomId}`;
+          console.log(`Broadcasting kick event to channel: ${channelName}`);
+          
+          // Subscribe to the channel first to ensure it's established
+          const channel = supabase.channel(channelName, {
+            config: {
+              broadcast: { self: true } // Allow seeing your own broadcasts
+            }
+          });
+          
+          // Make sure channel is connected before sending, with timeout safeguard
+          await new Promise<void>((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              console.log('Kick channel subscription timed out, continuing anyway');
+              resolve(); // Resolve anyway after timeout to prevent UI blocking
+            }, 2000); // 2-second timeout
+            
+            try {
+              channel.subscribe((status) => {
+                console.log(`Kick broadcast channel status: ${status}`);    
+                // Continue once connected
+                if (status === 'SUBSCRIBED') {
+                  clearTimeout(timeoutId);
+                  resolve();
+                }
+              });
+            } catch (err) {
+              clearTimeout(timeoutId);
+              console.error('Error in kick channel subscription:', err);
+              resolve(); // Resolve anyway to prevent UI blocking
+            }
+          });
+          
+          // Send the kick event with comprehensive payload data
+          await channel.send({
+            type: 'broadcast',
+            event: 'kick',
+            payload: { 
+              kickedUserId: userId, 
+              nickname,
+              kickedAt: new Date().toISOString(),
+              kickedBy: adminUserId,
+              roomId: roomId 
+            }
+          });
+          console.log('Kick broadcast sent successfully');
+          
+          // Also create a room-wide notification for backup
+          const backupChannelName = `room-${roomId}-kicks`;
+          console.log(`Broadcasting backup kick event to channel: ${backupChannelName}`);
+          
+          // Create and subscribe to backup channel
+          const backupChannel = supabase.channel(backupChannelName, {
+            config: {
+              broadcast: { self: true } // Allow seeing your own broadcasts
+            }
+          });
+          
+          // Make sure backup channel is connected before sending, with timeout safeguard
+          await new Promise<void>((resolve) => {
+            const timeoutId = setTimeout(() => {
+              console.log('Backup kick channel subscription timed out, continuing anyway');
+              resolve(); // Resolve anyway after timeout to prevent UI blocking
+            }, 2000); // 2-second timeout
+            
+            try {
+              backupChannel.subscribe((status) => {
+                console.log(`Backup kick channel status: ${status}`);
+                // Continue once connected
+                if (status === 'SUBSCRIBED') {
+                  clearTimeout(timeoutId);
+                  resolve();
+                }
+              });
+            } catch (err) {
+              clearTimeout(timeoutId);
+              console.error('Error in backup kick channel subscription:', err);
+              resolve(); // Resolve anyway to prevent UI blocking
+            }
+          });
+          
+          // Send on backup channel
+          await backupChannel.send({
+            type: 'broadcast',
+            event: 'participant_update',
+            payload: { 
+              type: 'kicked',
+              userId: userId, 
+              nickname,
+              timestamp: Date.now(),
+              roomId: roomId,
+              kickedBy: adminUserId
+            }
+          });
+          
+          console.log('Backup kick broadcast sent successfully');
+        } catch (broadcastError) {
+          console.error('Error broadcasting kick event:', broadcastError);
+        }  
+      } catch (error) {
+        console.error('Error storing kicked user information:', error);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error kicking member from room:', error);
+      return false;
+    }
   }
 };
 
 // Service for managing messages
 export const messageService = {
+  // Track active subscriptions to prevent duplicate subscriptions
+  _activeSubscriptions: {} as Record<string, { channel: any; timestamp: number }>,
   // Send a message
   async sendMessage(roomId: string, userId: string, nickname: string, content: string): Promise<Message | null> {
     try {
@@ -557,20 +1107,56 @@ export const messageService = {
     }
   },
 
-  // Listen to new messages in a room
+  // This property is no longer needed as we use _activeSubscriptions instead
+  
+  // Listen to new messages in a room with enhanced real-time performance
   subscribeToNewMessages(roomId: string, callback: (message: Message) => void): () => void {
-    console.log(`Setting up subscription for room ${roomId}`);
+    console.log(`Setting up enhanced real-time subscription for room ${roomId}`);
     
     // First, check for local messages that might have been added while offline
     this.checkLocalMessages(roomId, callback);
     
-    // Create a unique channel name based on roomId
-    const channelName = `room-${roomId}-messages-${Date.now()}`;
-    console.log(`Creating channel: ${channelName}`);
+    // Generate a unique client ID to help with message deduplication
+    const clientId = `client-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
     
-    // Set up the channel with status event handlers
+    // Check if we already have an active subscription for this room
+    const existingSubscription = this._activeSubscriptions[roomId];
+    if (existingSubscription) {
+      const timeSinceCreation = Date.now() - existingSubscription.timestamp;
+      
+      // If the subscription is recent (less than 10 seconds old), reuse it
+      // Reduced from 30s to 10s to ensure fresher subscriptions
+      if (timeSinceCreation < 10000) {
+        console.log(`Reusing existing subscription for room ${roomId} (created ${timeSinceCreation}ms ago)`);
+        return () => {
+          console.log(`Skipping cleanup of shared subscription for room ${roomId}`);
+          // No-op since this is a shared subscription
+        };
+      } else {
+        // If it's an older subscription, clean it up and create a new one
+        console.log(`Cleaning up stale subscription for room ${roomId}`);
+        try {
+          supabase.removeChannel(existingSubscription.channel);
+          delete this._activeSubscriptions[roomId];
+        } catch (error) {
+          console.error(`Error removing stale channel for room ${roomId}:`, error);
+        }
+      }
+    }
+    
+    // Create a stable channel name with client ID for better debugging
+    const channelName = `room-${roomId}-messages-${clientId}`;
+    console.log(`Creating enhanced channel: ${channelName}`);
+    
+    // Set up the channel with improved configuration for reliability
     const subscription = supabase
-      .channel(channelName)
+      .channel(channelName, {
+        config: {
+          broadcast: { self: true }  // Allow seeing your own broadcasts
+          // Note: retryInterval and timeout are not available in the type definition
+          // but we can still enhance the real-time behavior with broadcast settings
+        }
+      })
       .on('system', { event: 'connection_status' }, (status) => {
         console.log(`Realtime connection status for room ${roomId}:`, status);
       })
@@ -582,16 +1168,19 @@ export const messageService = {
       }, async (payload: { new: Message }) => {
         console.log('Real-time message received:', payload.new);
         
+        // Add sent timestamp if missing
+        if (!payload.new.sent_at) {
+          payload.new.sent_at = new Date().toISOString();
+        }
+        
         if (payload.new) {
           try {
             // Get nickname from local storage if available
             const localStorageKey = `messages_${roomId}`;
-            console.log('Looking for nickname in local storage:', localStorageKey);
             
             const messagesJSON = await AsyncStorage.getItem(localStorageKey);
             if (messagesJSON) {
               const messages = JSON.parse(messagesJSON);
-              console.log(`Found ${messages.length} local messages to check for nickname match`);
               
               // Find matching message by content and time to get nickname
               const matchingMsg = messages.find((m: Message) => {
@@ -601,17 +1190,46 @@ export const messageService = {
               
               if (matchingMsg && matchingMsg.nickname) {
                 // Add nickname to the message
-                console.log('Found matching message with nickname:', matchingMsg.nickname);
                 payload.new.nickname = matchingMsg.nickname;
               } else {
-                console.log('No matching message found with nickname');
-                // Use a default nickname if we can't find one
-                payload.new.nickname = 'User';
+                // Attempt to get nickname from participants table as fallback
+                try {
+                  const { data: participant } = await supabase
+                    .from('room_participants')
+                    .select('nickname')
+                    .eq('room_id', roomId)
+                    .eq('user_id', payload.new.user_id)
+                    .single();
+                  
+                  if (participant?.nickname) {
+                    payload.new.nickname = participant.nickname;
+                  } else {
+                    payload.new.nickname = 'User';
+                  }
+                } catch (participantError) {
+                  console.error('Error fetching participant nickname:', participantError);
+                  payload.new.nickname = 'User';
+                }
               }
             } else {
-              console.log('No local messages found in storage');
-              // Provide a default nickname
-              payload.new.nickname = 'User';
+              // Attempt to get nickname from participants table
+              try {
+                const { data: participant } = await supabase
+                  .from('room_participants')
+                  .select('nickname')
+                  .eq('room_id', roomId)
+                  .eq('user_id', payload.new.user_id)
+                  .single();
+                
+                if (participant?.nickname) {
+                  payload.new.nickname = participant.nickname;
+                } else {
+                  payload.new.nickname = 'User';
+                }
+              } catch (participantError) {
+                console.error('Error fetching participant nickname:', participantError);
+                payload.new.nickname = 'User';
+              }
             }
           } catch (err) {
             console.error('Error enhancing realtime message:', err);
@@ -619,14 +1237,36 @@ export const messageService = {
             payload.new.nickname = 'User';
           }
           
-          // Call callback with the message
-          console.log('Calling callback with enhanced message:', payload.new);
+          // Also update local cache with this message for consistency
+          try {
+            const messagesJSON = await AsyncStorage.getItem(`messages_${roomId}`);
+            const messages = messagesJSON ? JSON.parse(messagesJSON) : [];
+            
+            // Check if message already exists in cache to avoid duplicates
+            const exists = messages.some((m: Message) => m.id === payload.new.id);
+            if (!exists) {
+              messages.unshift(payload.new);
+              await AsyncStorage.setItem(`messages_${roomId}`, JSON.stringify(messages));
+            }
+          } catch (cacheError) {
+            console.error('Error updating message cache:', cacheError);
+          }
+          
+          // Call callback with the enhanced message
           callback(payload.new);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`Subscription status for room ${roomId}:`, status);
+      });
     
     console.log('Subscription created and activated');
+    
+    // Store this subscription in our tracking object
+    this._activeSubscriptions[roomId] = {
+      channel: subscription,
+      timestamp: Date.now()
+    };
 
     // Handle potential connection errors
     subscription.on('system', { event: 'reconnect_attempt' }, () => {
@@ -641,8 +1281,14 @@ export const messageService = {
     return () => {
       console.log(`Cleaning up subscription for room ${roomId}`);
       try {
-        supabase.removeChannel(subscription);
-        console.log(`Successfully removed channel for room ${roomId}`);
+        // Only remove if this is the current active subscription
+        if (this._activeSubscriptions[roomId]?.channel === subscription) {
+          delete this._activeSubscriptions[roomId];
+          supabase.removeChannel(subscription);
+          console.log(`Successfully removed channel for room ${roomId}`);
+        } else {
+          console.log(`Skipping removal of outdated channel for room ${roomId}`);
+        }
       } catch (error) {
         console.error(`Error removing channel for room ${roomId}:`, error);
       }

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { logger } from '@/config';
 import { userService } from '@/lib/user-service';
 import { getAuthRedirectUrl } from '@/lib/deep-linking';
 
@@ -29,6 +30,7 @@ export interface AuthState {
   login: (email: string) => Promise<void>;
   signup: (username: string, email: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   clearError: () => void;
   clearSuccess: () => void;
   checkSession: () => Promise<void>;
@@ -339,9 +341,16 @@ export const useAuthStore = create<AuthState>()(
               
               let profileCreated = false;
               
-              // Option 1: First try direct SQL insert via RPC
+              // SECURITY IMPROVEMENT: Using normal Supabase client with proper RLS policies
+              // This requires the following RLS policies to be set up in your Supabase project:
+              // 1. Users can insert their own profile
+              // 2. Users can update their own profile
+              
+              // Option 1: First try direct SQL insert via RPC with standard client
               try {
-                const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc(
+                logger.debug('Attempting to create profile via RPC for user:', data.user.id);
+                
+                const { data: rpcResult, error: rpcError } = await supabase.rpc(
                   'create_user_profile', 
                   { 
                     user_id: data.user.id,
@@ -350,20 +359,20 @@ export const useAuthStore = create<AuthState>()(
                 );
                 
                 if (rpcError) {
-                  console.log('RPC failed, falling back to normal insert:', rpcError);
+                  logger.warn('RPC failed, falling back to normal insert:', rpcError);
                   throw rpcError; // Will trigger fallback
                 } else {
-                  console.log('Profile created successfully via RPC');
+                  logger.info('Profile created successfully via RPC');
                   profileCreated = true;
                 }
               } catch (rpcAttemptError) {
                 // Fallback to regular insert if RPC doesn't exist
-                console.log('Falling back to direct insert');
+                logger.debug('Falling back to direct insert');
                 
-                // Option 2: Fall back to direct insert
+                // Option 2: Fall back to direct insert with standard client
                 try {
                   // Try with minimal fields
-                  const { data: profile, error: profileError } = await supabaseAdmin
+                  const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .upsert({
                       id: data.user.id,
@@ -488,6 +497,88 @@ export const useAuthStore = create<AuthState>()(
           set({ 
             isAuthenticated: false, 
             user: null 
+          });
+        }
+      },
+      
+      /**
+       * Deletes the current user account and all related data
+       */
+      deleteAccount: async () => {
+        try {
+          set({ isLoading: true, error: null });
+          
+          // Get the current user's ID
+          const { user } = get();
+          if (!user) {
+            throw new Error('No authenticated user to delete');
+          }
+          
+          // Step 1: Delete user-related data from all tables
+          // First delete user_recent_rooms entries
+          const { error: recentRoomsDeleteError } = await supabase
+            .from('user_recent_rooms')
+            .delete()
+            .eq('user_id', user.id);
+            
+          if (recentRoomsDeleteError) {
+            console.error('Error deleting recent rooms:', recentRoomsDeleteError);
+            // Continue with deletion process even if this fails
+          }
+          
+          // Delete messages created by the user
+          const { error: messagesDeleteError } = await supabase
+            .from('messages')
+            .delete()
+            .eq('user_id', user.id);
+            
+          if (messagesDeleteError) {
+            console.error('Error deleting messages:', messagesDeleteError);
+            // Continue with deletion process even if this fails
+          }
+          
+          // Step 2: Delete the user's profile
+          const { error: profileDeleteError } = await supabase
+            .from('profiles')
+            .delete()
+            .eq('id', user.id);
+            
+          if (profileDeleteError) {
+            console.error('Error deleting profile:', profileDeleteError);
+            throw profileDeleteError;
+          }
+          
+          // Step 3: Delete the user from Supabase Auth
+          const { error: userDeleteError } = await supabase.auth.admin.deleteUser(user.id);
+          
+          if (userDeleteError) {
+            // If this fails, try using the standard method to delete the current user
+            try {
+              const { error: standardDeleteError } = await supabase.rpc('delete_user');
+              
+              if (standardDeleteError) {
+                throw standardDeleteError;
+              }
+            } catch (rpcError) {
+              console.error('Could not delete user via RPC:', rpcError);
+              throw userDeleteError;
+            }
+          }
+          
+          // Step 4: Sign out and clear local state
+          await supabase.auth.signOut();
+          
+          set({
+            isLoading: false,
+            isAuthenticated: false,
+            user: null,
+            success: 'Account successfully deleted'
+          });
+        } catch (error: any) {
+          console.error('Error deleting account:', error);
+          set({
+            isLoading: false,
+            error: error.message || 'Failed to delete account'
           });
         }
       },

@@ -1,14 +1,17 @@
-import React from 'react';
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, ColorValue, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { StyleSheet, Text, View, ScrollView, ColorValue, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
 import { GlassmorphicCard } from '@/components/GlassmorphicCard';
+import { roomService } from '@/lib/room-service';
 import { Button } from '../../components/Button';
 import { ThemeToggle } from '@/components/themeToggle';
 
@@ -18,6 +21,10 @@ export default function HomeScreen() {
   const { isAuthenticated, user, logout } = useAuthStore();
   const theme = isDarkMode ? colors.dark : colors.light;
   
+  const [recentRooms, setRecentRooms] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [unreadCounts, setUnreadCounts] = useState<{[key: string]: number}>({});
+  
   const handleCreateRoom = () => {
     router.push('/create-room');
   };
@@ -25,6 +32,114 @@ export default function HomeScreen() {
   const handleJoinRoom = () => {
     router.push('/join-room');
   };
+  
+  const handleRoomPress = async (room: any) => {
+    // Use room_id property from recent rooms or fall back to room.id
+    const roomId = room.room_id || room.id;
+    // Include emoji and room name if available
+    const roomName = room.room?.name || room.rooms?.name || room.name || '';
+    const emoji = room.emoji || '💬';
+    const nickname = room.nickname || 'Anonymous';
+    
+    console.log(`Navigating to room: ${roomId}, with emoji: ${emoji}`);
+    
+    // Mark room as read when entering
+    if (isAuthenticated && user && roomId) {
+      await roomService.markRoomAsRead(roomId, user.id);
+      
+      // Update unread counts locally
+      setUnreadCounts(prev => ({
+        ...prev,
+        [roomId]: 0
+      }));
+    }
+    
+    router.push(`/room/${roomId}?name=${encodeURIComponent(roomName)}&emoji=${encodeURIComponent(emoji)}&nickname=${encodeURIComponent(nickname)}`);
+  };
+  
+  // Room loading function has been moved and memoized above
+  
+  // Room management is now directly associated with user emails, no need for clearing rooms
+  
+  // Memoize loadRecentRooms function to prevent it from causing rerenders
+  const memoizedLoadRecentRooms = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Only load rooms if user is authenticated
+      if (isAuthenticated && user) {
+        const rooms = await roomService.getRecentRooms(user.id);
+        console.log('Recent rooms loaded:', rooms.length);
+        
+        // Fetch unread message counts for each room
+        const unreadCountsData: {[key: string]: number} = {};
+        
+        if (rooms && rooms.length > 0) {
+          // Get unread counts in parallel
+          const countPromises = rooms.map(async (room) => {
+            const roomId = room.room_id || room.id;
+            const count = await roomService.getUnreadMessageCount(roomId, user.id);
+            return { roomId, count };
+          });
+          
+          // Wait for all counts to resolve
+          const results = await Promise.all(countPromises);
+          
+          // Build the unread counts object
+          results.forEach(({ roomId, count }) => {
+            unreadCountsData[roomId] = count;
+          });
+          
+          // Debug info - log only once per load
+          rooms.forEach(room => {
+            const roomId = room.room_id || room.id;
+            console.log(`Room ID: ${roomId}, Name: ${room.room?.name}, Emoji: ${room.emoji}, Unread: ${unreadCountsData[roomId] || 0}`);
+          });
+        }
+        
+        setRecentRooms(rooms || []);
+        setUnreadCounts(unreadCountsData);
+      } else {
+        setRecentRooms([]);
+        setUnreadCounts({});
+      }
+    } catch (error) {
+      console.error('Failed to load recent rooms:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, user]);
+  
+  // When the app comes back into focus, refresh unread counts
+  useFocusEffect(
+    useCallback(() => {
+      // This effect runs when the screen comes into focus
+      if (isAuthenticated && user) {
+        memoizedLoadRecentRooms();
+      }
+      
+      return () => {
+        // Cleanup when the screen loses focus
+      };
+    }, [isAuthenticated, user, memoizedLoadRecentRooms])
+  );
+  
+  useEffect(() => {
+    // Load rooms only on mount and when authentication state changes
+    if (isAuthenticated && user) {
+      memoizedLoadRecentRooms();
+    }
+    
+    // Set up a refresh interval - check for new messages every 30 seconds
+    const refreshInterval = setInterval(() => {
+      if (isAuthenticated && user) {
+        memoizedLoadRecentRooms();
+      }
+    }, 30000);
+    
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, [isAuthenticated, user?.id, memoizedLoadRecentRooms]); // Reload when authentication state changes
   
   const handleLogin = () => {
     router.push('/login');
@@ -35,11 +150,34 @@ export default function HomeScreen() {
   };
   
   const handleLogout = () => {
-    logout();
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Logout', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+              // The router navigation will happen automatically as auth state changes
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          }
+        }
+      ],
+      { cancelable: true }
+    );
   };
   
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView 
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={['top', 'left', 'right', 'bottom']}
+    >
       <LinearGradient
         colors={isDarkMode 
           ? ['#121212', '#1E1E1E', '#121212'] 
@@ -74,7 +212,7 @@ export default function HomeScreen() {
         </View>
         
         <ScrollView 
-          contentContainerStyle={styles.content}
+          contentContainerStyle={{...styles.content, paddingBottom: hp('10%')}}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.heroSection}>
@@ -128,25 +266,76 @@ export default function HomeScreen() {
             </GlassmorphicCard>
           </View>
           
-          <View style={styles.recentSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              Recent Rooms
-            </Text>
-            
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="message-text" size={40} color={theme.secondaryText} />
-              <Text style={[styles.emptyStateText, { color: theme.secondaryText }]}>
-                No recent rooms
+          {/* Only show recent rooms for authenticated users */}
+          {isAuthenticated && (
+            <View style={styles.recentSection}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Recent Rooms
               </Text>
-              <Button 
-                title="Create Your First Room" 
-                onPress={handleCreateRoom}
-                variant="primary"
-                size="small"
-                style={{ marginTop: 16 }}
-              />
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <Text style={[styles.sectionSubtitle, { color: theme.secondaryText }]}>
+                  {recentRooms.length} {recentRooms.length === 1 ? 'room' : 'rooms'} found
+                </Text>
+              </View>
+              
+              {loading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator color={theme.accent} />
+                  <Text style={[styles.loadingText, { color: theme.secondaryText }]}>Loading recent rooms...</Text>
+                </View>
+              ) : recentRooms.length > 0 ? (
+                <View style={styles.roomsContainer}>
+                  {recentRooms.map(item => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.roomItem, { backgroundColor: theme.card }]}
+                      onPress={() => handleRoomPress(item)}
+                    >
+                      <View style={styles.roomItemLeft}>
+                        <View style={[styles.roomEmoji, { backgroundColor: theme.accent + '20' }]}>
+                          <Text style={styles.emojiText}>{item.emoji || '💬'}</Text>
+                        </View>
+                        <View style={styles.roomInfo}>
+                          <Text style={[styles.roomName, { color: theme.text }]} numberOfLines={1}>
+                            {item.room?.name || 'Unnamed Room'}
+                          </Text>
+                          <Text style={[styles.roomTime, { color: theme.secondaryText }]}>
+                            {item.last_accessed ? new Date(item.last_accessed).toLocaleDateString() : 'Recently'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.roomItemRight}>
+                        {/* Show notification badge if there are unread messages */}
+                        {(unreadCounts[item.room_id] > 0) && (
+                          <View style={[styles.notificationBadge, { backgroundColor: theme.accent }]}>
+                            <Text style={styles.notificationText}>
+                              {unreadCounts[item.room_id] > 99 ? '99+' : unreadCounts[item.room_id]}
+                            </Text>
+                          </View>
+                        )}
+                        <FontAwesome5 name="chevron-right" size={14} color={theme.secondaryText} />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <MaterialCommunityIcons name="message-text" size={40} color={theme.secondaryText} />
+                  <Text style={[styles.emptyStateText, { color: theme.secondaryText }]}>
+                    No recent rooms
+                  </Text>
+                  <Button 
+                    title="Create Your First Room" 
+                    onPress={handleCreateRoom}
+                    variant="primary"
+                    size="small"
+                    style={{ marginTop: 16 }}
+                  />
+                </View>
+              )}
             </View>
-          </View>
+          )}
           
           {!isAuthenticated && (
             <View style={styles.authSection}>
@@ -190,6 +379,32 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  notificationBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginRight: 10,
+  },
+  notificationText: {
+    color: '#fff',
+    fontSize: RFValue(10),
+    fontWeight: 'bold',
+  },
+  recentSection: {
+    marginBottom: hp('2.5%'),
+  },
+  sectionTitle: {
+    fontSize: RFValue(20),
+    fontWeight: '600',
+    marginBottom: hp('1%'),
+  },
+  sectionSubtitle: {
+    fontSize: RFValue(12),
+    fontStyle: 'italic',
   },
   headerRight: {
     flexDirection: 'row',
@@ -306,18 +521,66 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: wp('1%'),
   },
-  recentSection: {
-    marginBottom: hp('2.5%'),
+  roomsContainer: {
+    width: '100%',
+    paddingVertical: 8,
   },
-  sectionTitle: {
-    fontSize: RFValue(20),
+  roomItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    marginVertical: 6,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  roomItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  roomEmoji: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  emojiText: {
+    fontSize: 18,
+  },
+  roomInfo: {
+    flex: 1,
+  },
+  roomName: {
+    fontSize: RFValue(14),
     fontWeight: '600',
-    marginBottom: hp('2%'),
+    marginBottom: 4,
+  },
+  roomTime: {
+    fontSize: RFValue(12),
+  },
+  roomItemRight: {
+    paddingRight: 8,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: hp('5%'),
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center', 
+    paddingVertical: 30,
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: RFValue(14),
   },
   emptyStateText: {
     fontSize: RFValue(16),

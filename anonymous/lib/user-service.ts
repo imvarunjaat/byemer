@@ -1,4 +1,5 @@
-import { supabase, supabaseAdmin } from './supabase';
+import { supabase } from './supabase';
+import { logger } from '../config';
 
 export interface Profile {
   id: string;
@@ -32,9 +33,16 @@ export const userService = {
         return existingProfile;
       }
       
-      // Use supabaseAdmin to bypass RLS when creating the profile
-      // This ensures that the profile can be created regardless of RLS policies
-      const { data, error } = await supabaseAdmin
+      // SECURITY IMPROVEMENT: No longer using supabaseAdmin to bypass RLS
+      // Instead, we now rely on proper RLS policies in Supabase that allow users
+      // to create their own profile once authenticated
+      // 
+      // Your Supabase RLS should have a policy like:
+      // CREATE POLICY "Users can create their own profile" 
+      // ON public.profiles FOR INSERT 
+      // WITH CHECK (auth.uid() = id);
+      
+      const { data, error } = await supabase
         .from('profiles')
         .insert({
           id: userId,

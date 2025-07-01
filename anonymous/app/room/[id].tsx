@@ -49,6 +49,7 @@ type MessageType = {
   isCurrentUser: boolean;
   timestamp: number;
   nickname?: string;
+  isSystemMessage?: boolean;
 };
 
 type RoomMember = {
@@ -131,16 +132,22 @@ export default function CreatedRoomScreen() {
   const [roomData, setRoomData] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isKicked, setIsKicked] = useState(false);  // Track if current user is kicked
   
   // User nickname - from params or default
   const [nickname, setNickname] = useState(params.nickname || 'Anonymous');
   
   // For managing real-time subscription
   const messageSubscriptionRef = useRef<() => void | null>(null);
+  const participantSubscriptionRef = useRef<() => void | null>(null);
   // Track mounted state to prevent state updates after unmounting
   const isMountedRef = useRef<boolean>(true);
   // Reference to store connection check interval
   const connectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track active subscription IDs to prevent duplicates
+  const activeSubscriptionIdRef = useRef<string | null>(null);
+  // Track processed message IDs to prevent duplicates
+  const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
   const [members, setMembers] = useState<RoomMember[]>([
     // Initial empty state, will be populated from database
@@ -231,9 +238,36 @@ export default function CreatedRoomScreen() {
           
           setMessages(formattedMessages);
         }
+                // Setup real-time subscription
+        // Generate a unique subscription ID
+        const subscriptionId = `${room.id}_${Date.now()}`;
+        activeSubscriptionIdRef.current = subscriptionId;
         
-        // Setup real-time subscription
         const unsubscribe = messageService.subscribeToNewMessages(room.id, (newMessage) => {
+          // Only process if this is still the active subscription
+          if (activeSubscriptionIdRef.current !== subscriptionId) {
+            console.log('Ignoring message from outdated subscription');
+            return;
+          }
+
+          // Check if we've already processed this message ID
+          if (newMessage.id && processedMessageIdsRef.current.has(newMessage.id)) {
+            console.log('Ignoring duplicate message with ID:', newMessage.id);
+            return;
+          }
+
+          // Add this message ID to processed set if it has an ID
+          if (newMessage.id) {
+            processedMessageIdsRef.current.add(newMessage.id);
+            
+            // Keep the set size manageable by removing old entries if it gets too large
+            if (processedMessageIdsRef.current.size > 1000) {
+              // Convert to array, keep only the latest 500 entries
+              const messageIds = Array.from(processedMessageIdsRef.current);
+              processedMessageIdsRef.current = new Set(messageIds.slice(-500));
+            }
+          }
+
           // Add new message to state
           const userId = isAuthenticated && user ? user.id : 'anonymous';
           const formattedMessage: MessageType = {
@@ -244,22 +278,112 @@ export default function CreatedRoomScreen() {
             nickname: newMessage.nickname
           };
           
-          // Check if this message already exists to avoid duplicates
+          // Check if this message already exists in the current UI state
           const isDuplicate = messages.some(m => 
-            (m.id === formattedMessage.id) || 
+            // Same ID (exact duplicate)
+            (m.id === formattedMessage.id) ||
+            // Same content from same user within time window (local preview vs server message)
             (m.text === formattedMessage.text && 
-             Math.abs(m.timestamp - formattedMessage.timestamp) < 5000 && // Within 5 seconds
-             m.isCurrentUser === formattedMessage.isCurrentUser)
+             formattedMessage.isCurrentUser === true && // Only apply stricter checks for current user's messages
+             m.isCurrentUser === true &&
+             Math.abs(m.timestamp - formattedMessage.timestamp) < 5000) // Reduced window for faster display
           );
           
-          if (!isDuplicate) {
+          if (!isDuplicate && isMountedRef.current) {
             console.log('Adding new message:', formattedMessage);
-            setMessages(prev => [...prev, formattedMessage]);
+            // Use a function update to ensure we're working with the latest state
+            setMessages(prev => {
+              // Add the new message to the array
+              const updatedMessages = [...prev, formattedMessage];
+              
+              // Schedule a scroll to bottom on next tick
+              setTimeout(() => {
+                if (scrollViewRef.current && isMountedRef.current) {
+                  scrollViewRef.current.scrollToEnd({ animated: true });
+                }
+              }, 50);
+              
+              return updatedMessages;
+            });
           }
         });
         
         // Store unsubscribe function
         messageSubscriptionRef.current = unsubscribe;
+        
+        // Set up participant subscription for real-time updates (joining, leaving, kicks)
+        const participantUnsubscribe = roomService.subscribeToRoomParticipants(
+          room.id, 
+          user?.id || 'anonymous',
+          (event, participantId, nickname) => {
+            console.log(`Participant event: ${event}`, { participantId, nickname });
+            
+            if (event === 'joined') {
+              // Someone joined
+              if (isMountedRef.current) {
+                const newMember: RoomMember = {
+                  id: participantId,
+                  name: nickname || 'Unknown User',
+                  isAdmin: false,
+                  is_active: true,
+                  joined_at: new Date().toISOString(),
+                  last_seen_at: new Date().toISOString()
+                };
+                
+                setMembers(prev => [...prev.filter(m => m.id !== participantId), newMember]);
+                
+                // Show notification in console
+                console.log(`${nickname || 'Someone'} joined the room`);
+              }
+            } 
+            else if (event === 'left') {
+              // Someone left
+              if (isMountedRef.current) {
+                setMembers(prev => prev.filter(m => m.id !== participantId));
+                
+                // Show notification in console
+                console.log(`${nickname || 'Someone'} left the room`);
+              }
+            }
+            else if (event === 'kicked') {
+              console.log(`[KICK_DEBUG] Received kick event for participantId=${participantId}, current user=${user?.id || 'anonymous'}`);
+              
+              // Current user was kicked
+              if (participantId === (user?.id || 'anonymous') && isMountedRef.current) {
+                // Check if the user was actually in the room before showing kicked message
+                // This prevents false positives when creating new rooms
+                const currentUserId = user?.id || 'anonymous';
+                if (!isAuthenticated || members.some(m => m.id === currentUserId)) {
+                  console.log('[KICK_DEBUG] YOU WERE KICKED FROM THE ROOM');
+                  
+                  // Only show the alert if we haven't already shown it for this room
+                  if (!isKicked) {
+                    setIsKicked(true);
+                    
+                    // Show alert notification
+                    Alert.alert(
+                      'Removed from Room',
+                      'You have been removed from this room by the admin.',
+                      [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]
+                    );
+                  }
+                } else {
+                  console.log('[KICK_DEBUG] False positive kick detection prevented');
+                }
+              }
+              else if (isMountedRef.current) {
+                // Another member was kicked
+                console.log(`[KICK_DEBUG] Another member kicked: ${nickname || participantId}`);
+                
+                // Use our direct handler to ensure UI is updated
+                handleMemberKicked(participantId, nickname);
+              }
+            }
+          }
+        );
+        
+        // Store unsubscribe function
+        participantSubscriptionRef.current = participantUnsubscribe;
         
         // Set up periodic connection health check
         console.log('Setting up realtime connection monitoring');
@@ -278,6 +402,10 @@ export default function CreatedRoomScreen() {
                 messageSubscriptionRef.current();
               }
               
+              if (participantSubscriptionRef.current) {
+                participantSubscriptionRef.current();
+              }
+              
               // Create new subscription
               const newUnsubscribe = messageService.subscribeToNewMessages(room.id, (newMessage) => {
                 // Add new message to state (same handler as before)
@@ -292,20 +420,45 @@ export default function CreatedRoomScreen() {
                 
                 // Check if this message already exists to avoid duplicates
                 const isDuplicate = messages.some(m => 
-                  (m.id === formattedMessage.id) || 
+                  // Same ID (exact duplicate)
+                  (m.id === formattedMessage.id) ||
+                  // Same content from same user within time window (local preview vs server message)
                   (m.text === formattedMessage.text && 
-                   Math.abs(m.timestamp - formattedMessage.timestamp) < 5000 && 
-                   m.isCurrentUser === formattedMessage.isCurrentUser)
+                   formattedMessage.isCurrentUser === true && // Only apply stricter checks for current user's messages
+                   m.isCurrentUser === true &&
+                   Math.abs(m.timestamp - formattedMessage.timestamp) < 10000) // Wider 10-second window
                 );
                 
-                if (!isDuplicate) {
-                  console.log('Adding new message:', formattedMessage);
+                if (!isDuplicate && isMountedRef.current) {
+                  console.log('Adding new message after reconnect:', formattedMessage);
                   setMessages(prev => [...prev, formattedMessage]);
                 }
               });
               
+              // Create new participant subscription
+              const newParticipantUnsubscribe = roomService.subscribeToRoomParticipants(
+                room.id, 
+                user?.id || 'anonymous',
+                (event, participantId, nickname) => {
+                  // Same handler as above
+                  if (event === 'kicked' && participantId === (user?.id || 'anonymous') && isMountedRef.current) {
+                    setIsKicked(true);
+                    Alert.alert(
+                      'Removed from Room',
+                      'You have been removed from this room by the admin.',
+                      [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]
+                    );
+                  }
+                }
+              );
+              
+              // Generate a new subscription ID
+              const newSubscriptionId = `${room.id}_${Date.now()}`;
+              activeSubscriptionIdRef.current = newSubscriptionId;
+              
               // Update subscription reference
               messageSubscriptionRef.current = newUnsubscribe;
+              participantSubscriptionRef.current = newParticipantUnsubscribe;
             }
           }
         }, 30000); // Check every 30 seconds
@@ -322,8 +475,28 @@ export default function CreatedRoomScreen() {
     
     // Clean up subscription on unmount
     return () => {
+      console.log('Cleaning up room effect');
+      isMountedRef.current = false;
+      
+      // Clear active subscription ID to prevent stale callbacks
+      activeSubscriptionIdRef.current = null;
+      
+      // Clear processed message IDs
+      processedMessageIdsRef.current.clear();
+      
       if (messageSubscriptionRef.current) {
         messageSubscriptionRef.current();
+        messageSubscriptionRef.current = null;
+      }
+      
+      if (participantSubscriptionRef.current) {
+        participantSubscriptionRef.current();
+        participantSubscriptionRef.current = null;
+      }
+      
+      if (connectionCheckIntervalRef.current) {
+        clearInterval(connectionCheckIntervalRef.current);
+        connectionCheckIntervalRef.current = null;
       }
     };
   }, [id, isAuthenticated, user, nickname]);
@@ -334,7 +507,7 @@ export default function CreatedRoomScreen() {
     header: width * 0.06,
   };
   
-  // Handle sending a new message
+  // Handle sending a new message with optimistic UI update for instant feedback
   const handleSend = async () => {
     if (!message.trim() || !roomData) return;
     
@@ -342,37 +515,106 @@ export default function CreatedRoomScreen() {
     setMessage(''); // Clear input right away for better UX
     
     try {
+      // Check if user is kicked before allowing message send
+      if (isKicked) {
+        Alert.alert(
+          'Cannot Send Message',
+          'You have been removed from this room and cannot send messages.',
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]
+        );
+        return;
+      }
+      
       // Use user ID if authenticated, or generate a random one for anonymous
       const userId = isAuthenticated && user ? user.id : `anon_${Math.random().toString(36).substring(2, 9)}`;
       
-      // For immediate feedback, add the message to state first
-      const tempId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const localMessage: MessageType = {
-        id: tempId,
+      // Generate a temporary ID for the local message
+      const localMessageId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Add an optimistic version of the message to the UI immediately
+      // This gives instant feedback to the user before server confirmation
+      const optimisticMessage: MessageType = {
+        id: localMessageId,
         text: messageText,
         isCurrentUser: true,
         timestamp: Date.now(),
-        nickname: nickname
+        nickname: 'You'
       };
       
-      setMessages(prev => [...prev, localMessage]);
+      // Immediately add to UI with optimistic update
+      setMessages(prev => {
+        const updatedMessages = [...prev, optimisticMessage];
+        
+        // Scroll to the new message
+        setTimeout(() => {
+          if (scrollViewRef.current && isMountedRef.current) {
+            scrollViewRef.current.scrollToEnd({ animated: true });
+          }
+        }, 50);
+        
+        return updatedMessages;
+      });
       
-      // Then send to Supabase in the background
-      await messageService.sendMessage(
+      // In parallel, send the message to the server
+      messageService.sendMessage(
         roomData.id,
         userId,
         nickname,
         messageText
-      );
-      
-      // The subscription will handle receiving the message from the server
-      // There may be a duplicate which our duplicate detection will handle
+      ).then(serverMessage => {
+        if (serverMessage && serverMessage.id) {
+          // The message will also come through the subscription
+          // Record the local message ID to help with deduplication
+          processedMessageIdsRef.current.add(localMessageId);
+          
+          // Also record the server message ID as processed
+          // This prevents duplicate messages when the subscription receives it
+          processedMessageIdsRef.current.add(serverMessage.id);
+        }
+      }).catch(error => {
+        console.error('Error sending message to server:', error);
+        
+        // If message fails, show an error indicator on the message
+        setMessages(prev => prev.map(msg => 
+          msg.id === localMessageId 
+            ? { ...msg, failed: true } 
+            : msg
+        ));
+        
+        // Allow the user to retry
+        Alert.alert('Message Not Sent', 'Tap on the message to retry');
+      });
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error in message send flow:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
     }
   };
 
+  // Direct function to handle member kick UI updates
+  const handleMemberKicked = (memberId: string, nickname?: string) => {
+    console.log(`[KICK_DEBUG] Direct kick handler called for ${nickname || memberId}`);
+    
+    // Force UI update to remove member
+    setMembers(prevMembers => {
+      const filteredMembers = prevMembers.filter(m => m.id !== memberId);
+      console.log(`[KICK_DEBUG] Members list update - before: ${prevMembers.length}, after: ${filteredMembers.length}`);
+      return filteredMembers;
+    });
+    
+    // Add system message for feedback
+    const kickSystemMessage: MessageType = {
+      id: `system_kick_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
+      text: `${nickname || 'A member'} was removed from the room`,
+      isCurrentUser: false,
+      timestamp: Date.now(),
+      nickname: 'System',
+      isSystemMessage: true
+    };
+    
+    setMessages(prev => [...prev, kickSystemMessage]);
+    console.log('[KICK_DEBUG] Added kick system message to chat');
+  };
+  
   // Handle room options with Supabase integration
   const handleRoomAction = async (action: 'delete' | 'add' | 'kick' | 'leave') => {
     if (!roomData) return;
@@ -462,12 +704,15 @@ export default function CreatedRoomScreen() {
         break;
         
       case 'kick':
+        console.log('[KICK_DEBUG] Kick action selected');
+        
         // Only room creator can kick members
         if (!isAuthenticated || !user || roomData.created_by !== user.id) {
           Alert.alert('Not Authorized', 'Only the room creator can remove members');
           return;
         }
         
+        // Filter out admin (creator) and current user from members that can be kicked
         const nonAdminMembers = members.filter(m => !m.isAdmin && m.id !== user.id);
         
         if (nonAdminMembers.length > 0) {
@@ -479,17 +724,35 @@ export default function CreatedRoomScreen() {
                 text: member.name,
                 onPress: async () => {
                   try {
-                    // In a real implementation, you would have an API call to remove the member
-                    // For now, we'll update the UI only
-                    setMembers(prev => prev.filter(m => m.id !== member.id));
-                    Alert.alert('Member Removed', `${member.name} has been removed from the room`);
+                    // Show loading indicator
+                    setLoading(true);
+                    
+                    console.log(`[KICK_DEBUG] Attempting to kick member: ${member.name} (${member.id})`);
+                    
+                    // Call the kickMember service method
+                    const success = await roomService.kickMember(id!, user?.id || '', member.id, member.name);
+                    
+                    if (success) {
+                      console.log(`[KICK_DEBUG] Kick successful for ${member.name}`);
+                      
+                      // Force immediate UI update regardless of real-time subscription
+                      handleMemberKicked(member.id, member.name);
+                      
+                      // Additional notification
+                      Alert.alert('Success', `${member.name} was removed from the room`);
+                    } else {
+                      console.log(`[KICK_DEBUG] Kick failed for ${member.name}`);
+                      Alert.alert('Error', 'Failed to remove member. You may not have permission.');
+                    }
                   } catch (error) {
-                    console.error('Error removing member:', error);
+                    console.error('[KICK_DEBUG] Error removing member:', error);
                     Alert.alert('Error', 'Failed to remove member');
+                  } finally {
+                    setLoading(false);
                   }
                 }
               })),
-              { text: 'Cancel', style: 'cancel' }
+              { text: 'Cancel', style: 'cancel' },
             ]
           );
         } else {

@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { supabase } from './supabase';
+import { processAuthUrl, getWindowLocation } from './platform-utils';
 
 /**
  * Configure deep linking handlers for the app
@@ -68,18 +69,9 @@ const handleAuthLink = async (url: string) => {
     console.log('Processing auth link:', url);
     console.log('Platform:', Platform.OS);
     
-    // Extract code if present
-    const hasAuthCode = url.includes('code=');
-    let code = null;
-    
-    if (hasAuthCode) {
-      // Extract the code parameter from the URL
-      const codeMatch = url.match(/code=([^&]+)/);
-      if (codeMatch && codeMatch[1]) {
-        code = codeMatch[1];
-        console.log('Auth code extracted from URL, attempting to exchange for session');
-      }
-    }
+    // Use our platform-aware URL processing utility
+    // This works on both web and mobile safely
+    const { code, accessToken, refreshToken } = await processAuthUrl(url);
     
     // Exchange code for session if present
     if (code) {
@@ -101,8 +93,9 @@ const handleAuthLink = async (url: string) => {
           console.log('Refreshing user profile after authentication...');
           await checkSession();
           
-          // Navigate home after profile refresh
-
+          // Navigate home after successful auth
+          router.replace('/');
+          return; // Exit early, authentication was successful
         }
       } catch (exchangeError) {
         console.error('Failed to exchange code:', exchangeError);
@@ -136,7 +129,17 @@ const handleAuthLink = async (url: string) => {
           const { data: verifyData } = await supabase.auth.getSession();
           if (verifyData?.session) {
             console.log('Session successfully established with tokens');
-
+            
+            // Import auth store to refresh user profile
+            const { useAuthStore } = require('@/store/auth-store');
+            const { checkSession } = useAuthStore.getState();
+            
+            // Refresh session data
+            await checkSession();
+            
+            // Navigate home after successful auth
+            router.replace('/');
+            return; // Exit early, authentication was successful
           }
         } catch (tokenError) {
           console.error('Token processing error:', tokenError);
@@ -160,7 +163,17 @@ const handleAuthLink = async (url: string) => {
           
           if (data?.session) {
             console.log('Session established via code exchange');
-
+            
+            // Import auth store to refresh user profile
+            const { useAuthStore } = require('@/store/auth-store');
+            const { checkSession } = useAuthStore.getState();
+            
+            // Refresh session data
+            await checkSession();
+            
+            // Navigate home after successful auth
+            router.replace('/');
+            return; // Exit early, authentication was successful
           }
         }
       } catch (codeError) {
@@ -176,7 +189,17 @@ const handleAuthLink = async (url: string) => {
       
       if (refreshData?.session) {
         console.log('Session refreshed successfully');
-
+        
+        // Import auth store to refresh user profile
+        const { useAuthStore } = require('@/store/auth-store');
+        const { checkSession } = useAuthStore.getState();
+        
+        // Refresh session data
+        await checkSession();
+        
+        // Navigate home after successful auth
+        router.replace('/');
+        return; // Exit early, authentication was successful
       }
     } catch (refreshError) {
       console.error('Session refresh error:', refreshError);
@@ -190,7 +213,17 @@ const handleAuthLink = async (url: string) => {
       
       if (sessionData?.session) {
         console.log('Existing session found');
-
+        
+        // Import auth store to refresh user profile
+        const { useAuthStore } = require('@/store/auth-store');
+        const { checkSession } = useAuthStore.getState();
+        
+        // Refresh session data
+        await checkSession();
+        
+        // Navigate home after successful auth
+        router.replace('/');
+        return; // Exit early, authentication was successful
       }
     } catch (sessionError) {
       console.error('Session check error:', sessionError);
@@ -198,7 +231,10 @@ const handleAuthLink = async (url: string) => {
     
     // If all strategies fail, route to the callback screen for further handling
     console.log('All direct auth strategies failed, routing to callback screen');
-    router.push('/auth/callback' as any);
+    // Only route to callback if we're not already on that screen to prevent loops
+    if (!url.includes('/auth/callback')) {
+      router.push('/auth/callback' as any);
+    }
 
     
   } catch (error: any) {

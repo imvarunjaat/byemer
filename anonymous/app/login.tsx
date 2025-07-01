@@ -54,8 +54,15 @@ export default function LoginScreen() {
   const [buttonDisabled, setButtonDisabled] = useState(false);
   const [uiLoading, setUiLoading] = useState(false); // UI loading state independent of actual auth loading
   const [loadingProgress] = useState(new Animated.Value(0));
+  const [validationError, setValidationError] = useState<string | null>(null);
   
   const [fadeAnim] = useState(new Animated.Value(0));
+  
+  // Email validation function
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
   
   // Animation on component mount
   useEffect(() => {
@@ -278,7 +285,13 @@ export default function LoginScreen() {
                       autoCapitalize="none"
                       autoComplete="email"
                       value={email}
-                      onChangeText={(text: string) => setEmail(text)}
+                      onChangeText={(text: string) => {
+                        setEmail(text);
+                        // Clear validation error when user types
+                        if (validationError) {
+                          setValidationError(null);
+                        }
+                      }}
                       editable={!isLoading}
                     />
                   </View>
@@ -302,9 +315,10 @@ export default function LoginScreen() {
                   </View>
                 )}
                 
-                {authError && !emailSent && !authError.includes('security purposes') && !authError.includes('seconds') && (
+                {(authError || validationError) && !emailSent && 
+                  !((authError && (authError.includes('security purposes') || authError.includes('seconds')))) && (
                   <Text style={[styles.errorText, { color: theme.error || '#ff3b30' }]}>
-                    {authError}
+                    {validationError || authError}
                   </Text>
                 )}
 
@@ -339,6 +353,15 @@ export default function LoginScreen() {
                         ],
                         { cancelable: true }
                       );
+                      return;
+                    }
+                    
+                    // Clear any previous validation errors
+                    setValidationError(null);
+                    
+                    // Validate email format before submitting
+                    if (!isValidEmail(email)) {
+                      setValidationError('Unable to validate email address: invalid format');
                       return;
                     }
                     

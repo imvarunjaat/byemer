@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.rork.gen-z-anonymous-group-chat",
-      "associatedDomains": ["applinks:iqzodmrmskrpzlwizfha.supabase.co"]
+      "associatedDomains": [
+        "applinks:iqzodmrmskrpzlwizfha.supabase.co"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -35,7 +37,10 @@
               "pathPrefix": "/auth/v1/verify"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -49,7 +54,8 @@
           "origin": "https://rork.com/"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

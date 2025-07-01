@@ -1,13 +1,46 @@
-import React from "react";
-import { Tabs } from "expo-router";
+import React, { useEffect } from "react";
+import { Tabs, router } from "expo-router";
+import { View, ActivityIndicator } from "react-native";
 import { useThemeStore } from "@/store/theme-store";
 import { colors } from "@/constants/colors";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAuthStore } from "@/store/auth-store";
+import { useTermsAcceptance } from "@/hooks/useTermsAcceptance";
+import TermsAcceptanceModal from "@/components/TermsAcceptanceModal";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
   const { isDarkMode } = useThemeStore();
   const theme = isDarkMode ? colors.dark : colors.light;
+  const insets = useSafeAreaInsets(); // Get safe area insets
+
+  // Use the shared hook for terms acceptance
+  const { 
+    showTermsModal, 
+    isLoading, 
+    handleAcceptTerms, 
+    handleDeclineTerms 
+  } = useTermsAcceptance();
   
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#6C63FF" />
+      </View>
+    );
+  }
+  
+  // Only render the modal when needed - the hook will handle all the logic
+  if (showTermsModal) {
+    return (
+      <TermsAcceptanceModal
+        visible={showTermsModal}
+        onAccept={handleAcceptTerms}
+        onDecline={handleDeclineTerms}
+      />
+    );
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -16,8 +49,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: theme.background,
           borderTopColor: theme.border,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom, // Add bottom inset to tab bar height
+          paddingBottom: 8 + insets.bottom, // Add bottom inset to padding
         },
         tabBarLabelStyle: {
           fontSize: 12,
