@@ -1,0 +1,3 @@
+[submodule "redirect/redirect"]
+	path = redirect/redirect
+	url = https://github.com/imvarunjaat/redirect.git
