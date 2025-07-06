@@ -172,14 +172,12 @@ export default function ProfileScreen() {
         { 
           text: 'Logout', 
           onPress: async () => {
-            Alert.alert(
-              'Log out',
-              'Are you sure you want to log out?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Log out', style: 'destructive', onPress: async () => { await logout(); router.replace('/'); } }
-              ]
-            );
+            try {
+              await logout();
+              router.replace('/');
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
           }, 
           style: 'destructive' 
         },
