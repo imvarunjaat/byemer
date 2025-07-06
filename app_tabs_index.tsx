@@ -707,196 +707,287 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  recentSection: {
-    marginBottom: hp('2.5%'),
-  },
-  sectionTitle: {
-    fontSize: RFValue(20),
-    fontWeight: '600',
-    marginBottom: hp('1%'),
-  },
-  sectionSubtitle: {
-    fontSize: RFValue(12),
-    fontStyle: 'italic',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 10,
-  },
-  profileText: {
-    fontSize: RFValue(12),
-    fontWeight: '600',
-    marginLeft: 5,
-  },
-  authButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 10,
-  },
-  authButtonText: {
-    fontSize: RFValue(12),
-    fontWeight: '600',
-  },
-  authSection: {
-    marginTop: hp('4%'),
-    marginBottom: hp('4%'),
-    paddingHorizontal: wp('5%'),
-  },
-  authCard: {
-    padding: wp('5%'),
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(124, 77, 255, 0.2)',
-  },
-  authTitle: {
-    fontSize: RFValue(18),
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  authDescription: {
-    fontSize: RFValue(14),
-    marginBottom: 16,
-  },
-  authButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
   background: {
     flex: 1,
   },
+  safeArea: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  
+  // Header Styles
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: wp('5%'),
-    paddingTop: hp('6%'),
-    paddingBottom: hp('1.5%'),
+    paddingTop: hp('2%'),
+    paddingBottom: hp('1%'),
   },
-  title: {
-    fontSize: RFValue(28),
-    fontWeight: 'bold',
-  },
-  content: {
-    padding: wp('5%'),
-    paddingBottom: hp('5%'),
-  },
-  heroSection: {
-    marginBottom: hp('4%'),
-  },
-  heroTitle: {
-    fontSize: RFValue(32),
-    fontWeight: 'bold',
-    marginBottom: hp('1%'),
-  },
-  heroSubtitle: {
-    fontSize: RFValue(16),
-    lineHeight: RFValue(24),
-  },
-  actionsContainer: {
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: hp('4%'),
+    alignItems: 'center',
   },
-  actionCard: {
-    width: '48%',
-    height: hp('22%'),
-  },
-  actionContent: {
+  headerText: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  iconContainer: {
-    width: wp('14%'),
-    height: wp('14%'),
-    borderRadius: wp('7%'),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: hp('1.5%'),
-  },
-  actionTitle: {
-    fontSize: RFValue(18),
-    fontWeight: '600',
-    marginBottom: hp('0.7%'),
-    textAlign: 'center',
-  },
-  actionDescription: {
+  greeting: {
     fontSize: RFValue(14),
-    textAlign: 'center',
-    paddingHorizontal: wp('1%'),
+    fontWeight: '400',
   },
-  roomsContainer: {
-    width: '100%',
-    paddingVertical: 8,
+  userName: {
+    fontSize: RFValue(20),
+    fontWeight: '600',
+    marginTop: 2,
   },
-  roomItem: {
+  appName: {
+    fontSize: RFValue(24),
+    fontWeight: '700',
+  },
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    marginVertical: 6,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    gap: 8,
   },
-  roomItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  roomEmoji: {
+  profileButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    alignItems: 'center',
   },
-  emojiText: {
-    fontSize: 18,
+  
+  // Modern Card Styles
+  modernCard: {
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    marginVertical: 4,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
+  },
+  
+  // FAB Styles
+  modernFAB: {
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+  },
+  fabPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  fabLabel: {
+    fontSize: RFValue(14),
+    fontWeight: '600',
+  },
+  
+  // Hero Section
+  heroSection: {
+    marginHorizontal: wp('5%'),
+    marginVertical: hp('2%'),
+  },
+  heroGradient: {
+    borderRadius: 20,
+    padding: wp('6%'),
+  },
+  heroContent: {
+    alignItems: 'center',
+  },
+  heroTitle: {
+    fontSize: RFValue(28),
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  heroSubtitle: {
+    fontSize: RFValue(16),
+    textAlign: 'center',
+    opacity: 0.8,
+  },
+  
+  // Welcome Section
+  welcomeSection: {
+    marginHorizontal: wp('5%'),
+    marginVertical: hp('4%'),
+  },
+  welcomeGradient: {
+    borderRadius: 24,
+    padding: wp('8%'),
+  },
+  welcomeContent: {
+    alignItems: 'center',
+  },
+  welcomeTitle: {
+    fontSize: RFValue(32),
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  welcomeSubtitle: {
+    fontSize: RFValue(18),
+    textAlign: 'center',
+    opacity: 0.8,
+    lineHeight: RFValue(24),
+  },
+  
+  // Action Section
+  actionSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionCard: {
+    flex: 1,
+    minHeight: hp('16%'),
+  },
+  actionGradient: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionTitle: {
+    fontSize: RFValue(16),
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  actionSubtitle: {
+    fontSize: RFValue(12),
+    textAlign: 'center',
+    opacity: 0.7,
+  },
+  
+  // Auth Section
+  authSection: {
+    paddingHorizontal: wp('5%'),
+    marginTop: hp('3%'),
+  },
+  authCard: {
+    padding: wp('6%'),
+    alignItems: 'center',
+  },
+  authTitle: {
+    fontSize: RFValue(24),
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  authDescription: {
+    fontSize: RFValue(16),
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: RFValue(22),
+  },
+  authButtons: {
+    gap: 12,
+    width: '100%',
+  },
+  authButton: {
+    borderRadius: 12,
+    paddingVertical: 16,
+  },
+  
+  // Recent Rooms Section
+  recentSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('4%'),
+  },
+  sectionHeader: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: RFValue(22),
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: RFValue(14),
+    opacity: 0.7,
+  },
+  
+  // Room Item Styles
+  roomItem: {
+    marginVertical: 4,
+  },
+  roomItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  roomIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  roomEmoji: {
+    fontSize: 20,
   },
   roomInfo: {
     flex: 1,
   },
   roomName: {
-    fontSize: RFValue(14),
+    fontSize: RFValue(16),
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   roomTime: {
     fontSize: RFValue(12),
+    opacity: 0.7,
   },
-  roomItemRight: {
-    paddingRight: 8,
+  roomActions: {
+    padding: 4,
+  },
+  roomSeparator: {
+    height: 4,
+  },
+  
+  // Loading & Empty States
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: hp('4%'),
+  },
+  loadingText: {
+    fontSize: RFValue(14),
+    marginTop: 12,
   },
   emptyState: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: hp('5%'),
+    paddingVertical: hp('6%'),
+    paddingHorizontal: wp('8%'),
   },
-  loadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center', 
-    paddingVertical: 30,
+  emptyStateTitle: {
+    fontSize: RFValue(18),
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  loadingText: {
-    marginTop: 8,
+  emptyStateSubtitle: {
     fontSize: RFValue(14),
-  },
-  emptyStateText: {
-    fontSize: RFValue(16),
-    marginTop: hp('1.5%'),
+    textAlign: 'center',
+    opacity: 0.7,
+    lineHeight: RFValue(20),
   },
 });
