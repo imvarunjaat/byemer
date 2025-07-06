@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Tabs, router } from "expo-router";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform } from "react-native";
 import { useThemeStore } from "@/store/theme-store";
 import { colors } from "@/constants/colors";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/auth-store";
 import { supabase } from "@/lib/supabase";
 import TermsAcceptanceModal from "@/components/TermsAcceptanceModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from 'expo-blur';
 
 export default function TabLayout() {
   const { user, logout } = useAuthStore();
@@ -15,7 +16,7 @@ export default function TabLayout() {
   const [isLoading, setIsLoading] = useState(true);
   const { isDarkMode } = useThemeStore();
   const theme = isDarkMode ? colors.dark : colors.light;
-  const insets = useSafeAreaInsets(); // Get safe area insets
+  const insets = useSafeAreaInsets();
 
   // Check terms acceptance
   useEffect(() => {
@@ -82,8 +83,13 @@ export default function TabLayout() {
   
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#6C63FF" />
+      <View style={{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: theme.background
+      }}>
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
@@ -101,35 +107,86 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: theme.accent,
-        tabBarInactiveTintColor: theme.secondaryText,
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textTertiary,
         tabBarStyle: {
-          backgroundColor: theme.background,
-          borderTopColor: theme.border,
-          height: 60 + insets.bottom, // Add bottom inset to tab bar height
-          paddingBottom: 8 + insets.bottom, // Add bottom inset to padding
+          backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+          borderTopWidth: 0,
+          borderTopColor: 'transparent',
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          elevation: 8,
+          shadowColor: theme.shadow,
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 16,
+          height: 80 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
+          paddingTop: 8,
+          paddingHorizontal: 16,
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '500',
+          fontWeight: '600',
+          marginTop: -4,
+          marginBottom: 4,
+        },
+        tabBarIconStyle: {
+          marginTop: 4,
         },
         headerStyle: {
           backgroundColor: theme.background,
           shadowColor: 'transparent',
           borderBottomWidth: 0,
+          elevation: 0,
         },
         headerTitleStyle: {
           color: theme.text,
-          fontWeight: '600',
-          fontSize: 18,
+          fontWeight: '700',
+          fontSize: 20,
         },
+        tabBarItemStyle: {
+          borderRadius: 16,
+          marginHorizontal: 4,
+          paddingVertical: 4,
+        },
+        tabBarBackground: () => (
+          Platform.OS === 'ios' ? (
+            <BlurView
+              intensity={100}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 0,
+                backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+              }}
+            />
+          ) : null
+        ),
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="home-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <View style={{
+              backgroundColor: focused ? theme.primaryContainer : 'transparent',
+              borderRadius: 12,
+              padding: 8,
+              marginTop: 2,
+            }}>
+              <MaterialCommunityIcons 
+                name={focused ? "home" : "home-outline"} 
+                size={size} 
+                color={focused ? theme.onPrimaryContainer : color} 
+              />
+            </View>
+          ),
           headerShown: false,
         }}
       />
@@ -137,7 +194,20 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="account-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <View style={{
+              backgroundColor: focused ? theme.primaryContainer : 'transparent',
+              borderRadius: 12,
+              padding: 8,
+              marginTop: 2,
+            }}>
+              <MaterialCommunityIcons 
+                name={focused ? "account" : "account-outline"} 
+                size={size} 
+                color={focused ? theme.onPrimaryContainer : color} 
+              />
+            </View>
+          ),
           headerShown: false,
         }}
       />
