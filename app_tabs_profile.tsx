@@ -1,19 +1,114 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, Switch, Pressable, Alert, Linking, Platform, KeyboardAvoidingView } from 'react-native';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  ScrollView, 
+  Switch, 
+  Pressable, 
+  Alert, 
+  Linking, 
+  Platform, 
+  KeyboardAvoidingView,
+  TouchableOpacity,
+  Animated,
+  Dimensions
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { responsiveWidth, responsiveHeight, scaledFontSize, spacing, radius, margin } from '@/utils/scale';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
 import { userService } from '@/lib/user-service';
-import { GlassmorphicCard } from '@/components/GlassmorphicCard';
 import { InputField } from '@/components/InputField';
 import { Button } from '../../components/Button';
 import { EmojiSelector } from '@/components/EmojiSelector';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 
+const { width, height } = Dimensions.get('window');
 
+// Modern Material Design 3 Card Component
+const ModernCard = ({ children, style, onPress, elevated = false, ...props }) => {
+  const { isDarkMode } = useThemeStore();
+  const theme = isDarkMode ? colors.dark : colors.light;
+  
+  const cardStyle = [
+    styles.modernCard,
+    {
+      backgroundColor: elevated ? theme.cardElevated : theme.card,
+      shadowColor: theme.shadow,
+    },
+    style
+  ];
+  
+  if (onPress) {
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          cardStyle,
+          pressed && styles.cardPressed
+        ]}
+        onPress={onPress}
+        {...props}
+      >
+        {children}
+      </Pressable>
+    );
+  }
+  
+  return <View style={cardStyle} {...props}>{children}</View>;
+};
+
+// Modern List Item Component
+const ModernListItem = ({ icon, title, subtitle, onPress, rightContent, iconColor, style }) => {
+  const { isDarkMode } = useThemeStore();
+  const theme = isDarkMode ? colors.dark : colors.light;
+  
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.listItem,
+        {
+          backgroundColor: pressed ? theme.surfaceContainer : 'transparent',
+        },
+        style
+      ]}
+      onPress={onPress}
+    >
+      <View style={[styles.listItemIcon, { backgroundColor: iconColor || theme.primaryContainer }]}>
+        <MaterialCommunityIcons
+          name={icon}
+          size={24}
+          color={iconColor ? theme.onPrimary : theme.onPrimaryContainer}
+        />
+      </View>
+      
+      <View style={styles.listItemContent}>
+        <Text style={[styles.listItemTitle, { color: theme.text }]}>
+          {title}
+        </Text>
+        {subtitle && (
+          <Text style={[styles.listItemSubtitle, { color: theme.textSecondary }]}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      
+      <View style={styles.listItemRight}>
+        {rightContent || (
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={20}
+            color={theme.textTertiary}
+          />
+        )}
+      </View>
+    </Pressable>
+  );
+};
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useThemeStore();
@@ -29,6 +124,7 @@ export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [fadeAnim] = useState(new Animated.Value(0));
   
   // Sync local state with auth store user data
   useEffect(() => {
@@ -42,12 +138,26 @@ export default function ProfileScreen() {
 
   // Reset the save message after a few seconds
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
+    let timer;
     if (saveMessage) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+      
       timer = setTimeout(() => {
-        setSaveMessage('');
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => setSaveMessage(''));
       }, 3000);
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [saveMessage, fadeAnim]);
     return () => {
       if (timer) clearTimeout(timer);
     };
