@@ -1,19 +1,114 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, Switch, Pressable, Alert, Linking, Platform, KeyboardAvoidingView } from 'react-native';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  ScrollView, 
+  Switch, 
+  Pressable, 
+  Alert, 
+  Linking, 
+  Platform, 
+  KeyboardAvoidingView,
+  TouchableOpacity,
+  Animated,
+  Dimensions
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { responsiveWidth, responsiveHeight, scaledFontSize, spacing, radius, margin } from '@/utils/scale';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { RFValue } from 'react-native-responsive-fontsize';
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
 import { userService } from '@/lib/user-service';
-import { GlassmorphicCard } from '@/components/GlassmorphicCard';
 import { InputField } from '@/components/InputField';
 import { Button } from '../../components/Button';
 import { EmojiSelector } from '@/components/EmojiSelector';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 
+const { width, height } = Dimensions.get('window');
 
+// Modern Material Design 3 Card Component
+const ModernCard = ({ children, style, onPress, elevated = false, ...props }) => {
+  const { isDarkMode } = useThemeStore();
+  const theme = isDarkMode ? colors.dark : colors.light;
+  
+  const cardStyle = [
+    styles.modernCard,
+    {
+      backgroundColor: elevated ? theme.cardElevated : theme.card,
+      shadowColor: theme.shadow,
+    },
+    style
+  ];
+  
+  if (onPress) {
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          cardStyle,
+          pressed && styles.cardPressed
+        ]}
+        onPress={onPress}
+        {...props}
+      >
+        {children}
+      </Pressable>
+    );
+  }
+  
+  return <View style={cardStyle} {...props}>{children}</View>;
+};
+
+// Modern List Item Component
+const ModernListItem = ({ icon, title, subtitle, onPress, rightContent, iconColor, style }) => {
+  const { isDarkMode } = useThemeStore();
+  const theme = isDarkMode ? colors.dark : colors.light;
+  
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.listItem,
+        {
+          backgroundColor: pressed ? theme.surfaceContainer : 'transparent',
+        },
+        style
+      ]}
+      onPress={onPress}
+    >
+      <View style={[styles.listItemIcon, { backgroundColor: iconColor || theme.primaryContainer }]}>
+        <MaterialCommunityIcons
+          name={icon}
+          size={24}
+          color={iconColor ? theme.onPrimary : theme.onPrimaryContainer}
+        />
+      </View>
+      
+      <View style={styles.listItemContent}>
+        <Text style={[styles.listItemTitle, { color: theme.text }]}>
+          {title}
+        </Text>
+        {subtitle && (
+          <Text style={[styles.listItemSubtitle, { color: theme.textSecondary }]}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      
+      <View style={styles.listItemRight}>
+        {rightContent || (
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={20}
+            color={theme.textTertiary}
+          />
+        )}
+      </View>
+    </Pressable>
+  );
+};
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useThemeStore();
@@ -29,6 +124,7 @@ export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [fadeAnim] = useState(new Animated.Value(0));
   
   // Sync local state with auth store user data
   useEffect(() => {
@@ -42,12 +138,26 @@ export default function ProfileScreen() {
 
   // Reset the save message after a few seconds
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
+    let timer;
     if (saveMessage) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+      
       timer = setTimeout(() => {
-        setSaveMessage('');
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => setSaveMessage(''));
       }, 3000);
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [saveMessage, fadeAnim]);
     return () => {
       if (timer) clearTimeout(timer);
     };
@@ -62,14 +172,12 @@ export default function ProfileScreen() {
         { 
           text: 'Logout', 
           onPress: async () => {
-            Alert.alert(
-              'Log out',
-              'Are you sure you want to log out?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Log out', style: 'destructive', onPress: async () => { await logout(); router.replace('/'); } }
-              ]
-            );
+            try {
+              await logout();
+              router.replace('/');
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
           }, 
           style: 'destructive' 
         },
@@ -77,7 +185,7 @@ export default function ProfileScreen() {
     );
   };
   
-  const handleEmojiSelect = (emoji: string) => {
+  const handleEmojiSelect = (emoji) => {
     setSelectedEmoji(emoji);
     setShowEmojiSelector(false);
   };
@@ -95,11 +203,8 @@ export default function ProfileScreen() {
     setSaveMessage('');
     
     try {
-      // Track if we're only updating emoji (may need special handling)
       const onlyUpdatingEmoji = nickname === originalNickname && selectedEmoji !== originalEmoji;
-      
-      // Prepare updates object with only changed fields
-      const updates: { username?: string; preferred_emoji?: string } = {};
+      const updates = {};
       
       if (nickname !== originalNickname) {
         updates.username = nickname;
@@ -109,26 +214,20 @@ export default function ProfileScreen() {
         updates.preferred_emoji = selectedEmoji;
       }
       
-      // Only make the API call if there are changes
       if (Object.keys(updates).length > 0) {
         const updatedProfile = await userService.updateUserProfile(user.id, updates);
         
         if (updatedProfile || onlyUpdatingEmoji) {
-          // For emoji-only updates, updatedProfile might be null if the column doesn't exist
-          // but we still want to update the UI
-          
-          // Update user in auth store immediately
           const updatedUser = {
             ...user,
             username: updatedProfile?.username || nickname,
-            preferred_emoji: selectedEmoji // Always use the selected emoji for UI
+            preferred_emoji: selectedEmoji
           };
           
           if (updateSession) {
             updateSession(updatedUser);
           }
           
-          // Update local state to reflect the changes
           setOriginalNickname(updatedUser.username);
           setOriginalEmoji(updatedUser.preferred_emoji);
           
@@ -148,160 +247,217 @@ export default function ProfileScreen() {
   };
   
   return (
-    <SafeAreaView 
-      style={[styles.container, { backgroundColor: theme.background }]}
-      edges={['top', 'left', 'right', 'bottom']}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    <View style={styles.container}>
+      <LinearGradient
+        colors={isDarkMode ? colors.gradients.dark.background : colors.gradients.light.background}
+        style={styles.background}
       >
-        <ScrollView 
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, minHeight: '100%', ...styles.content, paddingBottom: responsiveHeight(10) }}
-          showsVerticalScrollIndicator={false}
-        >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
-        </View>
-        
-        <GlassmorphicCard style={styles.profileCard}>
-          <View style={styles.profileHeader}>
-            <View style={[styles.avatarContainer, { backgroundColor: isDarkMode ? 'rgba(187, 134, 252, 0.2)' : 'rgba(124, 77, 255, 0.1)' }]}>
-              <Text style={styles.avatarEmoji}>{selectedEmoji}</Text>
-            </View>
-            <Text style={[styles.profileName, { color: theme.text }]}>
-              {nickname}
-            </Text>
-            <Text style={[styles.profileSubtitle, { color: theme.secondaryText }]}>
-              Your identity is hidden from others
-            </Text>
-          </View>
-          
-          <View style={styles.nicknameSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              Your Nickname
-            </Text>
-            <View style={styles.inputRow}>
-              <InputField
-                value={nickname}
-                onChangeText={setNickname}
-                placeholder="Enter a nickname"
-                maxLength={20}
-                leftIcon={<MaterialCommunityIcons name="account" size={20} color={theme.secondaryText} />}
-                containerStyle={{ flex: 1 }}
-              />
-              <Button
-                title="Save"
-                onPress={handleSaveProfile}
-                style={styles.saveButton}
-                disabled={!hasProfileChanged() || isSaving}
-                loading={isSaving}
-              />
-            </View>
-            {saveMessage ? (
-              <Text style={[
-                styles.saveMessage, 
-                { color: saveMessage.includes('success') ? '#4CAF50' : saveMessage.includes('No changes') ? theme.secondaryText : '#F44336' }
-              ]}>
-                {saveMessage}
+        <SafeAreaView style={styles.safeArea}>
+          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>
+                Profile
               </Text>
-            ) : null}
-          </View>
-          
-          <View style={styles.emojiSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              Your Emoji
-            </Text>
-            <Button
-              title={`Change Emoji ${selectedEmoji}`}
-              onPress={() => setShowEmojiSelector(!showEmojiSelector)}
-              variant="outline"
-            />
+              <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+                Manage your profile and preferences
+              </Text>
+            </View>
             
-            {showEmojiSelector && (
-              <View style={styles.emojiSelectorContainer}>
-                <EmojiSelector
-                  onSelect={handleEmojiSelect}
-                  selectedEmoji={selectedEmoji}
+            {/* Profile Card */}
+            <View style={styles.profileSection}>
+              <ModernCard style={styles.profileCard} elevated>
+                <LinearGradient
+                  colors={isDarkMode ? colors.gradients.dark.primary : colors.gradients.light.primary}
+                  style={styles.profileGradient}
+                >
+                  <View style={styles.profileHeader}>
+                    <TouchableOpacity
+                      style={[styles.avatarContainer, { backgroundColor: theme.surface }]}
+                      onPress={() => setShowEmojiSelector(true)}
+                    >
+                      <Text style={styles.avatarEmoji}>{selectedEmoji}</Text>
+                      <View style={[styles.editBadge, { backgroundColor: theme.primary }]}>
+                        <MaterialCommunityIcons
+                          name="pencil"
+                          size={12}
+                          color={theme.onPrimary}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.profileInfo}>
+                      <Text style={[styles.profileName, { color: theme.text }]}>
+                        {nickname}
+                      </Text>
+                      <Text style={[styles.profileEmail, { color: theme.textSecondary }]}>
+                        {user?.email || 'No email'}
+                      </Text>
+                    </View>
+                  </View>
+                </LinearGradient>
+              </ModernCard>
+            </View>
+            
+            {/* Edit Profile Section */}
+            <View style={styles.editSection}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Edit Profile
+              </Text>
+              
+              <ModernCard style={styles.editCard}>
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>
+                    Username
+                  </Text>
+                  <InputField
+                    value={nickname}
+                    onChangeText={setNickname}
+                    placeholder="Enter your username"
+                    style={styles.input}
+                  />
+                </View>
+                
+                <ModernListItem
+                  icon="emoticon-happy"
+                  title="Avatar Emoji"
+                  subtitle={`Current: ${selectedEmoji}`}
+                  onPress={() => setShowEmojiSelector(true)}
+                  iconColor={theme.secondary}
                 />
-              </View>
+                
+                {hasProfileChanged() && (
+                  <View style={styles.saveContainer}>
+                    <Button
+                      title="Save Changes"
+                      onPress={handleSaveProfile}
+                      loading={isSaving}
+                      style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                      textStyle={{ color: theme.onPrimary }}
+                    />
+                  </View>
+                )}
+              </ModernCard>
+            </View>
+            
+            {/* Settings Section */}
+            <View style={styles.settingsSection}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Settings
+              </Text>
+              
+              <ModernCard style={styles.settingsCard}>
+                <ModernListItem
+                  icon={isDarkMode ? "weather-night" : "weather-sunny"}
+                  title="Theme"
+                  subtitle={isDarkMode ? "Dark mode" : "Light mode"}
+                  onPress={toggleTheme}
+                  rightContent={
+                    <Switch
+                      value={isDarkMode}
+                      onValueChange={toggleTheme}
+                      trackColor={{ false: theme.outline, true: theme.primary }}
+                      thumbColor={isDarkMode ? theme.onPrimary : theme.surface}
+                      ios_backgroundColor={theme.outline}
+                    />
+                  }
+                  iconColor={isDarkMode ? '#BB86FC' : '#FFA726'}
+                />
+                
+                <View style={styles.separator} />
+                
+                <ModernListItem
+                  icon="bell"
+                  title="Notifications"
+                  subtitle="Push notifications"
+                  rightContent={
+                    <Switch
+                      value={notificationsEnabled}
+                      onValueChange={setNotificationsEnabled}
+                      trackColor={{ false: theme.outline, true: theme.primary }}
+                      thumbColor={notificationsEnabled ? theme.onPrimary : theme.surface}
+                      ios_backgroundColor={theme.outline}
+                    />
+                  }
+                  iconColor={theme.info}
+                />
+              </ModernCard>
+            </View>
+            
+            {/* Account Section */}
+            <View style={styles.accountSection}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Account
+              </Text>
+              
+              <ModernCard style={styles.accountCard}>
+                <ModernListItem
+                  icon="information"
+                  title="About isThatu"
+                  subtitle="Learn more about the app"
+                  onPress={() => {}}
+                  iconColor={theme.info}
+                />
+                
+                <View style={styles.separator} />
+                
+                <ModernListItem
+                  icon="shield-check"
+                  title="Privacy Policy"
+                  subtitle="How we protect your data"
+                  onPress={() => {}}
+                  iconColor={theme.success}
+                />
+                
+                <View style={styles.separator} />
+                
+                <ModernListItem
+                  icon="logout"
+                  title="Logout"
+                  subtitle="Sign out of your account"
+                  onPress={handleLogout}
+                  iconColor={theme.error}
+                />
+              </ModernCard>
+            </View>
+            
+            {/* Save Message */}
+            {saveMessage && (
+              <Animated.View style={[styles.saveMessage, { opacity: fadeAnim }]}>
+                <ModernCard style={[
+                  styles.messageCard,
+                  { 
+                    backgroundColor: saveMessage.includes('success') ? theme.successContainer : theme.errorContainer
+                  }
+                ]}>
+                  <MaterialCommunityIcons
+                    name={saveMessage.includes('success') ? "check-circle" : "alert-circle"}
+                    size={20}
+                    color={saveMessage.includes('success') ? theme.success : theme.error}
+                  />
+                  <Text style={[
+                    styles.messageText,
+                    { 
+                      color: saveMessage.includes('success') ? theme.success : theme.error
+                    }
+                  ]}>
+                    {saveMessage}
+                  </Text>
+                </ModernCard>
+              </Animated.View>
             )}
-          </View>
-          
-          {/* Settings menu moved here for better UX */}
-          <GlassmorphicCard style={styles.settingsCard}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Settings</Text>
-            <View style={styles.settingItem}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="moon" size={20} color={theme.accent} />
-                <Text style={[styles.settingText, { color: theme.text }]}>Dark Mode</Text>
-              </View>
-              <Switch
-                value={isDarkMode}
-                onValueChange={toggleTheme}
-                trackColor={{ false: '#767577', true: theme.accent }}
-                thumbColor={isDarkMode ? theme.secondaryAccent : '#f4f3f4'}
-              />
-            </View>
-            <View style={styles.settingItem}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="notifications" size={20} color={theme.accent} />
-                <Text style={[styles.settingText, { color: theme.text }]}>Notifications</Text>
-              </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={setNotificationsEnabled}
-                trackColor={{ false: '#767577', true: theme.accent }}
-                thumbColor={notificationsEnabled ? theme.secondaryAccent : '#f4f3f4'}
-              />
-            </View>
-            <Pressable 
-              style={styles.settingItem} 
-              onPress={() => Linking.openURL('https://imvarunjaat.github.io/privacy-policy/')}
-            >
-              <View style={styles.settingInfo}>
-                <Ionicons name="shield" size={20} color={theme.accent} />
-                <Text style={[styles.settingText, { color: theme.text }]}>Privacy Policy</Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={theme.secondaryText} />
-            </Pressable>
-            
-            <View style={styles.spacer} />
-            <View style={styles.spacer} />
-            
-            <Button
-              title="Log Out"
-              onPress={handleLogout}
-              variant="outline"
-              icon={<Ionicons name="log-out" size={20} color={theme.accent} />}
-              style={{ ...styles.logoutButton, marginTop: responsiveHeight(1), marginBottom: responsiveHeight(1) }}
-            />
-            
-            <View style={styles.spacer} />
-            <View style={styles.spacer} />
-            <View style={styles.spacer} />
-            
-            {/* About This App section */}
-            <View style={styles.aboutSection}>
-              <Text style={[styles.aboutTitle, { color: theme.text }]}>About This App</Text>
-              <Text style={[styles.aboutText, { color: theme.secondaryText }]}>
-                Built with <Text style={{ color: theme.accent }}>❤️</Text> by:- Varun Chaudhary
-              </Text>
-              <Text 
-                style={[styles.aboutEmail, { color: '#007AFF' }]}
-                onPress={() => Linking.openURL('mailto:contact.isThatu@gmail.com')}
-              >
-                contact.isThatu@gmail.com
-              </Text>
-            </View>
-          </GlassmorphicCard>
-
-        </GlassmorphicCard>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </SafeAreaView>
+      </LinearGradient>
+      
+      {/* Emoji Selector Modal */}
+      <EmojiSelector
+        visible={showEmojiSelector}
+        onSelectEmoji={handleEmojiSelect}
+        onClose={() => setShowEmojiSelector(false)}
+        selectedEmoji={selectedEmoji}
+      />
+    </View>
   );
 }
 
@@ -309,144 +465,200 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(240,240,255,0.7)',
-    // Remove any padding that might interfere with safe area insets
   },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: margin.sm,
-    width: '100%',
+  background: {
+    flex: 1,
   },
-  saveButton: {
-    marginLeft: margin.sm,
-    minWidth: responsiveWidth(20),
-    height: responsiveHeight(5.5),
+  safeArea: {
+    flex: 1,
   },
-  saveMessage: {
-    marginTop: margin.xs,
-    fontSize: scaledFontSize(12),
-    textAlign: 'center',
+  scrollView: {
+    flex: 1,
   },
-  content: {
-    paddingHorizontal: responsiveWidth(5),
-    paddingTop: responsiveHeight(3),
-    paddingBottom: responsiveHeight(12),
-    alignItems: 'center',
-  },
+  
+  // Header Styles
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: responsiveHeight(2),
-    marginTop: responsiveHeight(1),
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('2%'),
+    paddingBottom: hp('1%'),
   },
-  title: {
-    fontSize: scaledFontSize(28),
-    fontWeight: 'bold',
+  headerTitle: {
+    fontSize: RFValue(28),
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: RFValue(14),
+    opacity: 0.8,
+  },
+  
+  // Modern Card Styles
+  modernCard: {
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    marginVertical: 4,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
+  },
+  
+  // Profile Section
+  profileSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
   },
   profileCard: {
-    marginBottom: responsiveHeight(3),
-    width: '100%',
-    maxWidth: responsiveWidth(95),
-    alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  profileGradient: {
+    padding: wp('6%'),
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: responsiveHeight(3),
   },
   avatarContainer: {
-    width: responsiveWidth(22),
-    height: responsiveWidth(22),
-    borderRadius: responsiveWidth(11),
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: responsiveHeight(2),
+    marginBottom: 16,
+    position: 'relative',
   },
   avatarEmoji: {
-    fontSize: scaledFontSize(44),
+    fontSize: 36,
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInfo: {
+    alignItems: 'center',
   },
   profileName: {
-    fontSize: scaledFontSize(20),
-    fontWeight: 'bold',
-    marginBottom: responsiveHeight(0.5),
+    fontSize: RFValue(24),
+    fontWeight: '700',
+    marginBottom: 4,
   },
-  profileSubtitle: {
-    fontSize: scaledFontSize(13),
-    textAlign: 'center',
-    opacity: 0.7,
+  profileEmail: {
+    fontSize: RFValue(14),
+    opacity: 0.8,
   },
-  nicknameSection: {
-    marginBottom: responsiveHeight(3),
-  },
-  emojiSection: {
-    marginBottom: responsiveHeight(2),
+  
+  // Edit Section
+  editSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
   },
   sectionTitle: {
-    fontSize: scaledFontSize(16),
+    fontSize: RFValue(20),
     fontWeight: '600',
-    marginBottom: responsiveHeight(1),
+    marginBottom: 12,
   },
-  emojiSelectorContainer: {
-    marginTop: responsiveHeight(2),
+  editCard: {
+    padding: wp('4%'),
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: RFValue(16),
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  input: {
+    marginBottom: 0,
+  },
+  saveContainer: {
+    marginTop: 16,
+  },
+  saveButton: {
+    borderRadius: 12,
+    paddingVertical: 16,
+  },
+  
+  // List Item Styles
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+  },
+  listItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  listItemContent: {
+    flex: 1,
+  },
+  listItemTitle: {
+    fontSize: RFValue(16),
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  listItemSubtitle: {
+    fontSize: RFValue(12),
+    opacity: 0.7,
+  },
+  listItemRight: {
+    padding: 4,
+  },
+  
+  // Settings Section
+  settingsSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
   },
   settingsCard: {
-    marginTop: responsiveHeight(2),
-    marginBottom: responsiveHeight(2),
-    width: '100%',
-    maxWidth: responsiveWidth(98),
-    alignSelf: 'center',
-    backgroundColor: 'rgba(124,77,255,0.04)',
-    borderRadius: radius.lg,
-    paddingHorizontal: responsiveWidth(5),
-    paddingVertical: responsiveHeight(2),
+    padding: wp('4%'),
   },
-  cardTitle: {
-    fontSize: scaledFontSize(18),
-    fontWeight: '600',
-    marginBottom: responsiveHeight(1.2),
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(120, 120, 120, 0.2)',
+    marginVertical: 8,
   },
-  settingItem: {
+  
+  // Account Section
+  accountSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('4%'),
+  },
+  accountCard: {
+    padding: wp('4%'),
+  },
+  
+  // Save Message
+  saveMessage: {
+    position: 'absolute',
+    bottom: 20,
+    left: wp('5%'),
+    right: wp('5%'),
+    zIndex: 1000,
+  },
+  messageCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: responsiveHeight(1.2),
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150,150,150,0.1)',
+    padding: 16,
+    gap: 12,
   },
-  settingInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  settingText: {
-    fontSize: scaledFontSize(15),
-    marginLeft: responsiveWidth(3),
-    fontWeight: '500',
-  },
-  spacer: {
-    height: responsiveHeight(1),
-    width: '100%',
-  },
-  logoutButton: {
-    backgroundColor: 'transparent',
-    marginTop: responsiveHeight(1),
-  },
-  aboutSection: {
-    marginTop: responsiveHeight(2),
-    alignItems: 'center',
-  },
-  aboutTitle: {
-    fontSize: scaledFontSize(14),
+  messageText: {
+    fontSize: RFValue(14),
     fontWeight: '600',
-    marginBottom: responsiveHeight(0.5),
-  },
-  aboutText: {
-    fontSize: scaledFontSize(12),
-    textAlign: 'center',
-    marginBottom: responsiveHeight(0.5),
-  },
-  aboutEmail: {
-    fontSize: scaledFontSize(12),
-    textAlign: 'center',
-    marginTop: responsiveHeight(0.5),
+    flex: 1,
   },
 });
