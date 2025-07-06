@@ -185,7 +185,7 @@ export default function ProfileScreen() {
     );
   };
   
-  const handleEmojiSelect = (emoji: string) => {
+  const handleEmojiSelect = (emoji) => {
     setSelectedEmoji(emoji);
     setShowEmojiSelector(false);
   };
@@ -203,11 +203,8 @@ export default function ProfileScreen() {
     setSaveMessage('');
     
     try {
-      // Track if we're only updating emoji (may need special handling)
       const onlyUpdatingEmoji = nickname === originalNickname && selectedEmoji !== originalEmoji;
-      
-      // Prepare updates object with only changed fields
-      const updates: { username?: string; preferred_emoji?: string } = {};
+      const updates = {};
       
       if (nickname !== originalNickname) {
         updates.username = nickname;
@@ -217,26 +214,20 @@ export default function ProfileScreen() {
         updates.preferred_emoji = selectedEmoji;
       }
       
-      // Only make the API call if there are changes
       if (Object.keys(updates).length > 0) {
         const updatedProfile = await userService.updateUserProfile(user.id, updates);
         
         if (updatedProfile || onlyUpdatingEmoji) {
-          // For emoji-only updates, updatedProfile might be null if the column doesn't exist
-          // but we still want to update the UI
-          
-          // Update user in auth store immediately
           const updatedUser = {
             ...user,
             username: updatedProfile?.username || nickname,
-            preferred_emoji: selectedEmoji // Always use the selected emoji for UI
+            preferred_emoji: selectedEmoji
           };
           
           if (updateSession) {
             updateSession(updatedUser);
           }
           
-          // Update local state to reflect the changes
           setOriginalNickname(updatedUser.username);
           setOriginalEmoji(updatedUser.preferred_emoji);
           
