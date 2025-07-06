@@ -465,144 +465,200 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(240,240,255,0.7)',
-    // Remove any padding that might interfere with safe area insets
   },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: margin.sm,
-    width: '100%',
+  background: {
+    flex: 1,
   },
-  saveButton: {
-    marginLeft: margin.sm,
-    minWidth: responsiveWidth(20),
-    height: responsiveHeight(5.5),
+  safeArea: {
+    flex: 1,
   },
-  saveMessage: {
-    marginTop: margin.xs,
-    fontSize: scaledFontSize(12),
-    textAlign: 'center',
+  scrollView: {
+    flex: 1,
   },
-  content: {
-    paddingHorizontal: responsiveWidth(5),
-    paddingTop: responsiveHeight(3),
-    paddingBottom: responsiveHeight(12),
-    alignItems: 'center',
-  },
+  
+  // Header Styles
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: responsiveHeight(2),
-    marginTop: responsiveHeight(1),
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('2%'),
+    paddingBottom: hp('1%'),
   },
-  title: {
-    fontSize: scaledFontSize(28),
-    fontWeight: 'bold',
+  headerTitle: {
+    fontSize: RFValue(28),
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: RFValue(14),
+    opacity: 0.8,
+  },
+  
+  // Modern Card Styles
+  modernCard: {
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    marginVertical: 4,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
+  },
+  
+  // Profile Section
+  profileSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
   },
   profileCard: {
-    marginBottom: responsiveHeight(3),
-    width: '100%',
-    maxWidth: responsiveWidth(95),
-    alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  profileGradient: {
+    padding: wp('6%'),
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: responsiveHeight(3),
   },
   avatarContainer: {
-    width: responsiveWidth(22),
-    height: responsiveWidth(22),
-    borderRadius: responsiveWidth(11),
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: responsiveHeight(2),
+    marginBottom: 16,
+    position: 'relative',
   },
   avatarEmoji: {
-    fontSize: scaledFontSize(44),
+    fontSize: 36,
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInfo: {
+    alignItems: 'center',
   },
   profileName: {
-    fontSize: scaledFontSize(20),
-    fontWeight: 'bold',
-    marginBottom: responsiveHeight(0.5),
+    fontSize: RFValue(24),
+    fontWeight: '700',
+    marginBottom: 4,
   },
-  profileSubtitle: {
-    fontSize: scaledFontSize(13),
-    textAlign: 'center',
-    opacity: 0.7,
+  profileEmail: {
+    fontSize: RFValue(14),
+    opacity: 0.8,
   },
-  nicknameSection: {
-    marginBottom: responsiveHeight(3),
-  },
-  emojiSection: {
-    marginBottom: responsiveHeight(2),
+  
+  // Edit Section
+  editSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
   },
   sectionTitle: {
-    fontSize: scaledFontSize(16),
+    fontSize: RFValue(20),
     fontWeight: '600',
-    marginBottom: responsiveHeight(1),
+    marginBottom: 12,
   },
-  emojiSelectorContainer: {
-    marginTop: responsiveHeight(2),
+  editCard: {
+    padding: wp('4%'),
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: RFValue(16),
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  input: {
+    marginBottom: 0,
+  },
+  saveContainer: {
+    marginTop: 16,
+  },
+  saveButton: {
+    borderRadius: 12,
+    paddingVertical: 16,
+  },
+  
+  // List Item Styles
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+  },
+  listItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  listItemContent: {
+    flex: 1,
+  },
+  listItemTitle: {
+    fontSize: RFValue(16),
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  listItemSubtitle: {
+    fontSize: RFValue(12),
+    opacity: 0.7,
+  },
+  listItemRight: {
+    padding: 4,
+  },
+  
+  // Settings Section
+  settingsSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('3%'),
   },
   settingsCard: {
-    marginTop: responsiveHeight(2),
-    marginBottom: responsiveHeight(2),
-    width: '100%',
-    maxWidth: responsiveWidth(98),
-    alignSelf: 'center',
-    backgroundColor: 'rgba(124,77,255,0.04)',
-    borderRadius: radius.lg,
-    paddingHorizontal: responsiveWidth(5),
-    paddingVertical: responsiveHeight(2),
+    padding: wp('4%'),
   },
-  cardTitle: {
-    fontSize: scaledFontSize(18),
-    fontWeight: '600',
-    marginBottom: responsiveHeight(1.2),
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(120, 120, 120, 0.2)',
+    marginVertical: 8,
   },
-  settingItem: {
+  
+  // Account Section
+  accountSection: {
+    paddingHorizontal: wp('5%'),
+    marginBottom: hp('4%'),
+  },
+  accountCard: {
+    padding: wp('4%'),
+  },
+  
+  // Save Message
+  saveMessage: {
+    position: 'absolute',
+    bottom: 20,
+    left: wp('5%'),
+    right: wp('5%'),
+    zIndex: 1000,
+  },
+  messageCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: responsiveHeight(1.2),
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150,150,150,0.1)',
+    padding: 16,
+    gap: 12,
   },
-  settingInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  settingText: {
-    fontSize: scaledFontSize(15),
-    marginLeft: responsiveWidth(3),
-    fontWeight: '500',
-  },
-  spacer: {
-    height: responsiveHeight(1),
-    width: '100%',
-  },
-  logoutButton: {
-    backgroundColor: 'transparent',
-    marginTop: responsiveHeight(1),
-  },
-  aboutSection: {
-    marginTop: responsiveHeight(2),
-    alignItems: 'center',
-  },
-  aboutTitle: {
-    fontSize: scaledFontSize(14),
+  messageText: {
+    fontSize: RFValue(14),
     fontWeight: '600',
-    marginBottom: responsiveHeight(0.5),
-  },
-  aboutText: {
-    fontSize: scaledFontSize(12),
-    textAlign: 'center',
-    marginBottom: responsiveHeight(0.5),
-  },
-  aboutEmail: {
-    fontSize: scaledFontSize(12),
-    textAlign: 'center',
-    marginTop: responsiveHeight(0.5),
+    flex: 1,
   },
 });
