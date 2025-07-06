@@ -256,160 +256,217 @@ export default function ProfileScreen() {
   };
   
   return (
-    <SafeAreaView 
-      style={[styles.container, { backgroundColor: theme.background }]}
-      edges={['top', 'left', 'right', 'bottom']}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    <View style={styles.container}>
+      <LinearGradient
+        colors={isDarkMode ? colors.gradients.dark.background : colors.gradients.light.background}
+        style={styles.background}
       >
-        <ScrollView 
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, minHeight: '100%', ...styles.content, paddingBottom: responsiveHeight(10) }}
-          showsVerticalScrollIndicator={false}
-        >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
-        </View>
-        
-        <GlassmorphicCard style={styles.profileCard}>
-          <View style={styles.profileHeader}>
-            <View style={[styles.avatarContainer, { backgroundColor: isDarkMode ? 'rgba(187, 134, 252, 0.2)' : 'rgba(124, 77, 255, 0.1)' }]}>
-              <Text style={styles.avatarEmoji}>{selectedEmoji}</Text>
-            </View>
-            <Text style={[styles.profileName, { color: theme.text }]}>
-              {nickname}
-            </Text>
-            <Text style={[styles.profileSubtitle, { color: theme.secondaryText }]}>
-              Your identity is hidden from others
-            </Text>
-          </View>
-          
-          <View style={styles.nicknameSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              Your Nickname
-            </Text>
-            <View style={styles.inputRow}>
-              <InputField
-                value={nickname}
-                onChangeText={setNickname}
-                placeholder="Enter a nickname"
-                maxLength={20}
-                leftIcon={<MaterialCommunityIcons name="account" size={20} color={theme.secondaryText} />}
-                containerStyle={{ flex: 1 }}
-              />
-              <Button
-                title="Save"
-                onPress={handleSaveProfile}
-                style={styles.saveButton}
-                disabled={!hasProfileChanged() || isSaving}
-                loading={isSaving}
-              />
-            </View>
-            {saveMessage ? (
-              <Text style={[
-                styles.saveMessage, 
-                { color: saveMessage.includes('success') ? '#4CAF50' : saveMessage.includes('No changes') ? theme.secondaryText : '#F44336' }
-              ]}>
-                {saveMessage}
+        <SafeAreaView style={styles.safeArea}>
+          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>
+                Profile
               </Text>
-            ) : null}
-          </View>
-          
-          <View style={styles.emojiSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              Your Emoji
-            </Text>
-            <Button
-              title={`Change Emoji ${selectedEmoji}`}
-              onPress={() => setShowEmojiSelector(!showEmojiSelector)}
-              variant="outline"
-            />
+              <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+                Manage your profile and preferences
+              </Text>
+            </View>
             
-            {showEmojiSelector && (
-              <View style={styles.emojiSelectorContainer}>
-                <EmojiSelector
-                  onSelect={handleEmojiSelect}
-                  selectedEmoji={selectedEmoji}
+            {/* Profile Card */}
+            <View style={styles.profileSection}>
+              <ModernCard style={styles.profileCard} elevated>
+                <LinearGradient
+                  colors={isDarkMode ? colors.gradients.dark.primary : colors.gradients.light.primary}
+                  style={styles.profileGradient}
+                >
+                  <View style={styles.profileHeader}>
+                    <TouchableOpacity
+                      style={[styles.avatarContainer, { backgroundColor: theme.surface }]}
+                      onPress={() => setShowEmojiSelector(true)}
+                    >
+                      <Text style={styles.avatarEmoji}>{selectedEmoji}</Text>
+                      <View style={[styles.editBadge, { backgroundColor: theme.primary }]}>
+                        <MaterialCommunityIcons
+                          name="pencil"
+                          size={12}
+                          color={theme.onPrimary}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.profileInfo}>
+                      <Text style={[styles.profileName, { color: theme.text }]}>
+                        {nickname}
+                      </Text>
+                      <Text style={[styles.profileEmail, { color: theme.textSecondary }]}>
+                        {user?.email || 'No email'}
+                      </Text>
+                    </View>
+                  </View>
+                </LinearGradient>
+              </ModernCard>
+            </View>
+            
+            {/* Edit Profile Section */}
+            <View style={styles.editSection}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Edit Profile
+              </Text>
+              
+              <ModernCard style={styles.editCard}>
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>
+                    Username
+                  </Text>
+                  <InputField
+                    value={nickname}
+                    onChangeText={setNickname}
+                    placeholder="Enter your username"
+                    style={styles.input}
+                  />
+                </View>
+                
+                <ModernListItem
+                  icon="emoticon-happy"
+                  title="Avatar Emoji"
+                  subtitle={`Current: ${selectedEmoji}`}
+                  onPress={() => setShowEmojiSelector(true)}
+                  iconColor={theme.secondary}
                 />
-              </View>
+                
+                {hasProfileChanged() && (
+                  <View style={styles.saveContainer}>
+                    <Button
+                      title="Save Changes"
+                      onPress={handleSaveProfile}
+                      loading={isSaving}
+                      style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                      textStyle={{ color: theme.onPrimary }}
+                    />
+                  </View>
+                )}
+              </ModernCard>
+            </View>
+            
+            {/* Settings Section */}
+            <View style={styles.settingsSection}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Settings
+              </Text>
+              
+              <ModernCard style={styles.settingsCard}>
+                <ModernListItem
+                  icon={isDarkMode ? "weather-night" : "weather-sunny"}
+                  title="Theme"
+                  subtitle={isDarkMode ? "Dark mode" : "Light mode"}
+                  onPress={toggleTheme}
+                  rightContent={
+                    <Switch
+                      value={isDarkMode}
+                      onValueChange={toggleTheme}
+                      trackColor={{ false: theme.outline, true: theme.primary }}
+                      thumbColor={isDarkMode ? theme.onPrimary : theme.surface}
+                      ios_backgroundColor={theme.outline}
+                    />
+                  }
+                  iconColor={isDarkMode ? '#BB86FC' : '#FFA726'}
+                />
+                
+                <View style={styles.separator} />
+                
+                <ModernListItem
+                  icon="bell"
+                  title="Notifications"
+                  subtitle="Push notifications"
+                  rightContent={
+                    <Switch
+                      value={notificationsEnabled}
+                      onValueChange={setNotificationsEnabled}
+                      trackColor={{ false: theme.outline, true: theme.primary }}
+                      thumbColor={notificationsEnabled ? theme.onPrimary : theme.surface}
+                      ios_backgroundColor={theme.outline}
+                    />
+                  }
+                  iconColor={theme.info}
+                />
+              </ModernCard>
+            </View>
+            
+            {/* Account Section */}
+            <View style={styles.accountSection}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Account
+              </Text>
+              
+              <ModernCard style={styles.accountCard}>
+                <ModernListItem
+                  icon="information"
+                  title="About isThatu"
+                  subtitle="Learn more about the app"
+                  onPress={() => {}}
+                  iconColor={theme.info}
+                />
+                
+                <View style={styles.separator} />
+                
+                <ModernListItem
+                  icon="shield-check"
+                  title="Privacy Policy"
+                  subtitle="How we protect your data"
+                  onPress={() => {}}
+                  iconColor={theme.success}
+                />
+                
+                <View style={styles.separator} />
+                
+                <ModernListItem
+                  icon="logout"
+                  title="Logout"
+                  subtitle="Sign out of your account"
+                  onPress={handleLogout}
+                  iconColor={theme.error}
+                />
+              </ModernCard>
+            </View>
+            
+            {/* Save Message */}
+            {saveMessage && (
+              <Animated.View style={[styles.saveMessage, { opacity: fadeAnim }]}>
+                <ModernCard style={[
+                  styles.messageCard,
+                  { 
+                    backgroundColor: saveMessage.includes('success') ? theme.successContainer : theme.errorContainer
+                  }
+                ]}>
+                  <MaterialCommunityIcons
+                    name={saveMessage.includes('success') ? "check-circle" : "alert-circle"}
+                    size={20}
+                    color={saveMessage.includes('success') ? theme.success : theme.error}
+                  />
+                  <Text style={[
+                    styles.messageText,
+                    { 
+                      color: saveMessage.includes('success') ? theme.success : theme.error
+                    }
+                  ]}>
+                    {saveMessage}
+                  </Text>
+                </ModernCard>
+              </Animated.View>
             )}
-          </View>
-          
-          {/* Settings menu moved here for better UX */}
-          <GlassmorphicCard style={styles.settingsCard}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Settings</Text>
-            <View style={styles.settingItem}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="moon" size={20} color={theme.accent} />
-                <Text style={[styles.settingText, { color: theme.text }]}>Dark Mode</Text>
-              </View>
-              <Switch
-                value={isDarkMode}
-                onValueChange={toggleTheme}
-                trackColor={{ false: '#767577', true: theme.accent }}
-                thumbColor={isDarkMode ? theme.secondaryAccent : '#f4f3f4'}
-              />
-            </View>
-            <View style={styles.settingItem}>
-              <View style={styles.settingInfo}>
-                <Ionicons name="notifications" size={20} color={theme.accent} />
-                <Text style={[styles.settingText, { color: theme.text }]}>Notifications</Text>
-              </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={setNotificationsEnabled}
-                trackColor={{ false: '#767577', true: theme.accent }}
-                thumbColor={notificationsEnabled ? theme.secondaryAccent : '#f4f3f4'}
-              />
-            </View>
-            <Pressable 
-              style={styles.settingItem} 
-              onPress={() => Linking.openURL('https://imvarunjaat.github.io/privacy-policy/')}
-            >
-              <View style={styles.settingInfo}>
-                <Ionicons name="shield" size={20} color={theme.accent} />
-                <Text style={[styles.settingText, { color: theme.text }]}>Privacy Policy</Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={theme.secondaryText} />
-            </Pressable>
-            
-            <View style={styles.spacer} />
-            <View style={styles.spacer} />
-            
-            <Button
-              title="Log Out"
-              onPress={handleLogout}
-              variant="outline"
-              icon={<Ionicons name="log-out" size={20} color={theme.accent} />}
-              style={{ ...styles.logoutButton, marginTop: responsiveHeight(1), marginBottom: responsiveHeight(1) }}
-            />
-            
-            <View style={styles.spacer} />
-            <View style={styles.spacer} />
-            <View style={styles.spacer} />
-            
-            {/* About This App section */}
-            <View style={styles.aboutSection}>
-              <Text style={[styles.aboutTitle, { color: theme.text }]}>About This App</Text>
-              <Text style={[styles.aboutText, { color: theme.secondaryText }]}>
-                Built with <Text style={{ color: theme.accent }}>❤️</Text> by:- Varun Chaudhary
-              </Text>
-              <Text 
-                style={[styles.aboutEmail, { color: '#007AFF' }]}
-                onPress={() => Linking.openURL('mailto:contact.isThatu@gmail.com')}
-              >
-                contact.isThatu@gmail.com
-              </Text>
-            </View>
-          </GlassmorphicCard>
-
-        </GlassmorphicCard>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </SafeAreaView>
+      </LinearGradient>
+      
+      {/* Emoji Selector Modal */}
+      <EmojiSelector
+        visible={showEmojiSelector}
+        onSelectEmoji={handleEmojiSelect}
+        onClose={() => setShowEmojiSelector(false)}
+        selectedEmoji={selectedEmoji}
+      />
+    </View>
   );
 }
 
