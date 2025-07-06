@@ -1,18 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, ColorValue, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  ScrollView, 
+  TouchableOpacity, 
+  FlatList, 
+  ActivityIndicator, 
+  Alert,
+  Pressable,
+  Animated,
+  RefreshControl,
+  Dimensions
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '@/store/theme-store';
 import { useAuthStore } from '@/store/auth-store';
 import { colors } from '@/constants/colors';
-import { GlassmorphicCard } from '@/components/GlassmorphicCard';
 import { roomService } from '@/lib/room-service';
 import { Button } from '../../components/Button';
 import { ThemeToggle } from '@/components/themeToggle';
+
+const { width, height } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
